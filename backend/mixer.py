@@ -39,6 +39,11 @@ class UnifiedMixer:
         comp1_acc = np.zeros((h, w), dtype=np.complex128)
         comp2_acc = np.zeros((h, w), dtype=np.complex128)
         
+        # FIXED: For magnitude_phase mode, we need special phase accumulation
+        if mode == 'magnitude_phase':
+            mag_acc = np.zeros((h, w), dtype=np.float64)
+            phase_vec_acc = np.zeros((h, w), dtype=np.complex128)
+        
         # Check if we have per-component regions (region mixing mode)
         regions = region_config.get('regions', {})
         has_per_component_regions = bool(regions)
@@ -59,6 +64,10 @@ class UnifiedMixer:
             mask = UnifiedMixer._generate_unified_mask(h, w, region_config)
             masks = {str(i): mask for i in range(1, 5)}  # Same mask for all
 
+        # Track weights for normalization
+        sum_wa = 0
+        sum_wb = 0
+        
         # Process each image
         for slot, img in images_dict.items():
             if img is None: 
@@ -67,6 +76,10 @@ class UnifiedMixer:
             # Normalize sliders (0-10 -> 0.0-1.0)
             wa = weights_a.get(str(slot), 0) / 10.0
             wb = weights_b.get(str(slot), 0) / 10.0
+
+            # Track weight sums for normalization
+            sum_wa += wa
+            sum_wb += wb
 
             # Skip if both weights are zero
             if wa == 0 and wb == 0:
@@ -103,28 +116,68 @@ class UnifiedMixer:
                     c1 = c1 * (1 - mask)
                     c2 = c2 * (1 - mask)
 
-            comp1_acc += c1 * wa
-            comp2_acc += c2 * wb
+            # FIXED: Proper accumulation based on mode
+            if mode == 'magnitude_phase':
+                # Magnitude: linear accumulation
+                mag_acc += c1 * wa
+                # Phase: complex vector accumulation (CRITICAL FIX)
+                phase_vec_acc += wb * np.exp(1j * c2)
+            else:
+                # Real/Imag: linear accumulation
+                comp1_acc += c1 * wa
+                comp2_acc += c2 * wb
 
-        # Reconstruct
-        result_complex = None
+        # FIX 3: Weight normalization
         if mode == 'magnitude_phase':
-            result_complex = comp1_acc * np.exp(1j * comp2_acc)
+            # Normalize magnitude accumulator
+            mag_acc /= max(sum_wa, 1e-6)
+            # FIX 4: Phase-only input edge case
+            if np.allclose(phase_vec_acc, 0):
+                # If all wb == 0, use weighted average of input phases as reference
+                reference_phase = np.zeros((h, w), dtype=np.float64)
+                total_wb = 0
+                for slot, img in images_dict.items():
+                    if img is None:
+                        continue
+                    wb = weights_b.get(str(slot), 0) / 10.0
+                    if wb > 0:
+                        phase = img.get_phase()
+                        reference_phase += wb * phase
+                        total_wb += wb
+                if total_wb > 0:
+                    reference_phase /= total_wb
+                else:
+                    # If truly no phase input, use zero phase
+                    reference_phase = np.zeros((h, w), dtype=np.float64)
+                final_phase = reference_phase
+            else:
+                # Normalize phase vector accumulator
+                phase_vec_acc /= max(sum_wb, 1e-6)
+                # Extract final phase from accumulated complex vectors
+                final_phase = np.angle(phase_vec_acc)
+            
+            result_complex = mag_acc * np.exp(1j * final_phase)
         else:
+            # Normalize real/imag accumulators
+            comp1_acc /= max(sum_wa, 1e-6)
+            comp2_acc /= max(sum_wb, 1e-6)
             result_complex = comp1_acc + 1j * comp2_acc
 
         # IFFT
         f_ishift = np.fft.ifftshift(result_complex)
         img_back = np.fft.ifft2(f_ishift)
-        img_back = np.abs(img_back)
+        # FIXED: Use real part instead of absolute value
+        img_back = np.real(img_back)
 
         # Store the numpy array
         result_array = img_back.copy()
 
+        # Normalize for display (0-255)
+        img_normalized = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX)
+        img_normalized = np.uint8(img_normalized)
+        
         # Encode to base64 for immediate display
-        img_back = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX)
-        img_back = np.uint8(img_back)
-        _, buffer = cv2.imencode('.png', img_back)
+        _, buffer = cv2.imencode('.png', img_normalized)
         result_b64 = base64.b64encode(buffer).decode('utf-8')
 
         return result_array, result_b64

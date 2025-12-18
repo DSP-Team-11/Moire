@@ -27,15 +27,29 @@ class ImageManager:
         """Retrieve an output ImageModel"""
         return self.outputs.get(output_key)
     
-    def clear_outputs(self):
-        """Clear all output images"""
+    def clear_all_inputs(self):
+        """Clear all input images"""
+        for key in self.images:
+            self.images[key] = None
+        print("All input images cleared")
+    
+    def clear_input(self, slot_id):
+        """Clear a specific input slot"""
+        if slot_id in self.images:
+            self.images[slot_id] = None
+            print(f"Input slot {slot_id} cleared")
+    
+    def clear_all_outputs(self):
+        """Clear all outputs"""
         for key in self.outputs:
             self.outputs[key] = None
+        print("All outputs cleared")
     
     def clear_output(self, output_key):
         """Clear specific output image"""
         if output_key in self.outputs:
             self.outputs[output_key] = None
+            print(f"Output {output_key} cleared")
 
     def _unify_sizes(self):
         """Ensures all images match the smallest dimensions"""
