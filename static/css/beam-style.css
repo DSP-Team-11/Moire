@@ -1,0 +1,547 @@
+/* Keep your original variables but add new ones for layout */
+:root {
+    --cream: #fff8f1;
+    --sand: #f2e6d8;
+    --warm: #f8dfae;
+    --coral: #f6a89c;
+    --mint: #a8dad7;
+    --bg-color: #fefaf5;
+    --panel-bg: #ffffff;
+    --card-bg: #ffffff;
+    --border-color: #f0e8e0;
+    --text-primary: #3a3a3a;
+    --text-secondary: #7a6f64;
+    --text-accent: #e87a6b;
+    --shadow-light: rgba(246, 168, 156, 0.1);
+    --shadow-medium: rgba(246, 168, 156, 0.15);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Full screen body */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, var(--cream) 0%, var(--sand) 100%);
+    color: var(--text-primary);
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+/* Full screen container */
+.container {
+    height: 100vh;
+    width: 100vw;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header - fixed height */
+.header {
+    text-align: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: var(--panel-bg);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px var(--shadow-medium);
+    border: 1px solid var(--border-color);
+    flex-shrink: 0; /* Don't shrink */
+}
+
+.logo-container h1 {
+    color: var(--text-accent);
+    font-size: 1.8em;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.logo-container h1 i {
+    color: var(--mint);
+    font-size: 1.2em;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 0.95em;
+    font-weight: 500;
+}
+
+/* Main content - takes all remaining space */
+.main-content {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 20px;
+    flex: 1; /* Take all available space */
+    min-height: 0; /* Important for proper scrolling */
+    overflow: hidden; /* Prevent main content from scrolling */
+}
+
+/* Visualization section - fills left side */
+.visualization-section {
+    background: var(--panel-bg);
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: 0 4px 12px var(--shadow-medium);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Prevent plots from scrolling */
+}
+
+.visualization-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    flex: 1; /* Take all available space */
+    min-height: 0; /* Important for children */
+}
+
+/* Plot containers - fill available space */
+.wave-map-container,
+.beam-profile-container {
+    background: var(--card-bg);
+    border-radius: 10px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px var(--shadow-light);
+    overflow: hidden; /* Prevent plot content from spilling */
+    min-height: 0; /* Allow shrinking if needed */
+}
+
+.plot-title {
+    text-align: center;
+    color: var(--text-accent);
+    margin-bottom: 10px;
+    font-size: 1.1em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-shrink: 0; /* Don't shrink title */
+}
+
+.plot-title i {
+    color: var(--mint);
+}
+
+/* Plot area - fills remaining space */
+.plot-container {
+    flex: 1; /* Take all remaining space */
+    min-height: 0; /* Allow shrinking */
+    overflow: hidden; /* Prevent scrollbars */
+    background: linear-gradient(135deg, var(--cream) 0%, var(--warm) 100%);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    position: relative;
+}
+
+.plot-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+    display: block;
+}
+
+.plot-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+/* Controls section - scrollable when needed */
+.controls-section {
+    background: var(--panel-bg);
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: 0 4px 12px var(--shadow-medium);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    overflow-y: auto; /* Scroll vertically when needed */
+    overflow-x: hidden; /* Prevent horizontal scroll */
+    height: 100%; /* Fill available height */
+}
+
+/* Custom scrollbar for controls */
+.controls-section::-webkit-scrollbar {
+    width: 6px;
+}
+
+.controls-section::-webkit-scrollbar-track {
+    background: var(--cream);
+    border-radius: 3px;
+}
+
+.controls-section::-webkit-scrollbar-thumb {
+    background: var(--coral);
+    border-radius: 3px;
+}
+
+.controls-section::-webkit-scrollbar-thumb:hover {
+    background: var(--text-accent);
+}
+
+/* Control groups */
+.control-group {
+    background: var(--card-bg);
+    border-radius: 10px;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px var(--shadow-light);
+    flex-shrink: 0; /* Don't shrink control groups */
+}
+
+.group-title {
+    color: var(--text-primary);
+    margin-bottom: 15px;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.group-title i {
+    color: var(--mint);
+    font-size: 1em;
+}
+
+/* Control items */
+.control-item {
+    margin-bottom: 12px;
+}
+
+.control-item:last-child {
+    margin-bottom: 0;
+}
+
+.control-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.95em;
+}
+
+.value-display {
+    color: var(--text-accent);
+    font-weight: bold;
+    background: rgba(232, 122, 107, 0.1);
+    padding: 4px 10px;
+    border-radius: 15px;
+    font-size: 0.85em;
+    border: 1px solid rgba(232, 122, 107, 0.2);
+}
+
+/* Slider styles */
+.slider {
+    width: 100%;
+    height: 6px;
+    -webkit-appearance: none;
+    background: linear-gradient(to right, var(--mint), var(--coral));
+    border-radius: 3px;
+    outline: none;
+    border: 1px solid var(--border-color);
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--text-accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid var(--panel-bg);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+}
+
+/* Select box */
+.select-box {
+    width: 100%;
+    padding: 10px;
+    background: var(--cream);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.95em;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.select-box:focus {
+    outline: none;
+    border-color: var(--mint);
+    box-shadow: 0 0 0 2px rgba(168, 218, 215, 0.2);
+}
+
+/* Button group */
+.button-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn {
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: inherit;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--mint) 0%, #7fcac6 100%);
+    color: var(--text-primary);
+    border: 1px solid rgba(168, 218, 215, 0.3);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #7fcac6 0%, var(--mint) 100%);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: linear-gradient(135deg, var(--sand) 0%, var(--warm) 100%);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(135deg, var(--warm) 0%, var(--sand) 100%);
+    transform: translateY(-1px);
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, var(--coral) 0%, var(--text-accent) 100%);
+    color: white;
+    border: 1px solid rgba(232, 122, 107, 0.3);
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, var(--text-accent) 0%, var(--coral) 100%);
+    transform: translateY(-1px);
+}
+
+/* Status indicator */
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: rgba(168, 218, 215, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(168, 218, 215, 0.3);
+    border-left: 3px solid var(--mint);
+    font-size: 0.9em;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--mint);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { 
+        opacity: 1; 
+        box-shadow: 0 0 0 0 rgba(168, 218, 215, 0.7);
+    }
+    70% { 
+        opacity: 0.8;
+        box-shadow: 0 0 0 10px rgba(168, 218, 215, 0);
+    }
+    100% { 
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(168, 218, 215, 0);
+    }
+}
+
+/* Transmitter info */
+.transmitter-info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    padding-top: 6px;
+    border-top: 1px dashed var(--border-color);
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+
+/* Medium screens (tablets) */
+@media (max-width: 1200px) {
+    .container {
+        padding: 15px;
+    }
+    
+    .main-content {
+        grid-template-columns: 1fr 350px; /* Adjust control panel width */
+        gap: 15px;
+    }
+    
+    .visualization-grid {
+        gap: 12px;
+    }
+}
+
+/* Small screens (large phones, small tablets) */
+@media (max-width: 992px) {
+    .main-content {
+        grid-template-columns: 1fr 320px;
+    }
+    
+    .header {
+        padding: 12px;
+        margin-bottom: 15px;
+    }
+    
+    .logo-container h1 {
+        font-size: 1.6em;
+    }
+    
+    .subtitle {
+        font-size: 0.9em;
+    }
+}
+
+/* Mobile screens */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto; /* Allow scrolling on mobile */
+    }
+    
+    .main-content {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto; /* Auto height for both */
+        gap: 15px;
+    }
+    
+    .visualization-section {
+        height: 60vh; /* Fixed height for plots on mobile */
+        min-height: 400px;
+    }
+    
+    .visualization-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr 1fr;
+        height: 100%; /* Fill the fixed height */
+    }
+    
+    .wave-map-container,
+    .beam-profile-container {
+        height: 50%; /* Each plot takes half */
+    }
+    
+    .controls-section {
+        max-height: 50vh; /* Limit height on mobile */
+        overflow-y: auto; /* Scrollable on mobile */
+    }
+}
+
+/* Very small screens */
+@media (max-width: 480px) {
+    .container {
+        padding: 8px;
+    }
+    
+    .header {
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    
+    .logo-container h1 {
+        font-size: 1.4em;
+    }
+    
+    .visualization-section {
+        height: 50vh;
+        min-height: 350px;
+        padding: 10px;
+    }
+    
+    .controls-section {
+        padding: 10px;
+        gap: 10px;
+    }
+    
+    .control-group {
+        padding: 12px;
+    }
+    
+    .plot-title {
+        font-size: 1em;
+    }
+    
+    .group-title {
+        font-size: 1em;
+    }
+    
+    .button-group {
+        grid-template-columns: 1fr; /* Stack buttons vertically */
+    }
+}
+
+/* Ensure plots are always visible */
+.wave-map-container .plot-container,
+.beam-profile-container .plot-container {
+    position: relative;
+}
+
+/* Add subtle inner shadow to plots for depth */
+.wave-map-container .plot-container::after,
+.beam-profile-container .plot-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+/* Ensure text doesn't overflow */
+.control-label,
+.group-title,
+.plot-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

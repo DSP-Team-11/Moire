@@ -1,0 +1,123 @@
+{
+    "arrays": [
+        {
+            "center": [
+                0.0,
+                0.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": -19.33480853782642,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        },
+        {
+            "center": [
+                3.0,
+                0.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": -41.257011704312845,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        },
+        {
+            "center": [
+                -3.0,
+                0.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 9.950626687951598,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        },
+        {
+            "center": [
+                3.0,
+                10.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 229.304468960508,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        },
+        {
+            "center": [
+                -3.0,
+                10.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 166.90810693565317,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        },
+        {
+            "center": [
+                0.0,
+                10.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 204.9439052634246,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        }
+    ],
+    "target": {
+        "x": -2.0,
+        "y": 5.7
+    },
+    "follow_target": true
+}

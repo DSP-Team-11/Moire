@@ -1,0 +1,588 @@
+:root {
+    --cream: #fff8f1;
+    --sand: #f2e6d8;
+    --warm: #f8dfae;
+    --coral: #f6a89c;
+    --mint: #a8dad7;
+    
+    /* Derived colors for UI */
+    --bg-color: #fefaf5;
+    --panel-bg: #ffffff;
+    --card-bg: #ffffff;
+    --border-color: #f0e8e0;
+    --text-primary: #3a3a3a;
+    --text-secondary: #7a6f64;
+    --text-accent: #e87a6b;
+    --shadow-light: rgba(246, 168, 156, 0.1);
+    --shadow-medium: rgba(246, 168, 156, 0.15);
+}
+
+/* Reset and Base */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: var(--bg-color);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* --- RESPONSIVE MAIN LAYOUT --- */
+.main-stage {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: clamp(12px, 2vh, 20px);
+    padding: clamp(12px, 1.5vh, 20px);
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Input Grid - Fully Responsive */
+.input-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: clamp(8px, 1.5vh, 16px);
+    min-height: 0;
+    height: 100%;
+}
+
+/* Output Grid - Fully Responsive */
+.output-grid {
+    display: grid;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: clamp(8px, 1.5vh, 16px);
+    min-height: 0;
+    height: 100%;
+}
+
+/* --- CARD SYSTEM WITH FLEXIBLE SIZING --- */
+.card {
+    background: var(--card-bg);
+    border-radius: 10px;
+    border: 1.5px solid var(--border-color);
+    padding: clamp(10px, 1vh, 14px);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    box-shadow: 0 2px 6px var(--shadow-light);
+    transition: all 0.2s ease;
+}
+
+.card:hover {
+    border-color: var(--coral);
+    box-shadow: 0 4px 12px var(--shadow-medium);
+}
+
+.card-body {
+    display: flex;
+    gap: clamp(6px, 1vh, 10px);
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-bottom: 10px;
+}
+
+/* Viewport - Proportional Scaling */
+.viewport {
+    flex: 1 1 0;
+    background: linear-gradient(45deg, var(--sand) 0%, var(--warm) 100%);
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+    border: 1.5px solid var(--border-color);
+    cursor: default; /* Changed from crosshair to default; JS will toggle to crosshair when needed */
+    min-height: 0;
+    aspect-ratio: 1/1; /* Maintain square-ish proportions */
+}
+
+.viewport img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+/* New: Selection Canvas Overlay */
+.selection-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Non-interactive except during JS-handled selection */
+    border-radius: 6px; /* Match viewport */
+}
+
+/* Card Footer - Fixed Height, Now Supports Buttons */
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 12px;
+    height: 28px; /* Fixed height to prevent layout shift */
+    flex-shrink: 0;
+    gap: 4px; /* Small gap for buttons */
+    flex-wrap: wrap; /* Allow wrap on very small screens to prevent overflow */
+    align-content: center;
+}
+
+.card-footer > * {
+    flex-shrink: 0; /* Prevent shrinking of labels/buttons */
+}
+
+.card-footer span {
+    color: var(--text-accent);
+    font-weight: 700;
+    white-space: nowrap; /* Prevent label wrap */
+    min-width: 50px; /* Ensure space for "Image X" */
+}
+
+/* Select - Responsive */
+select {
+    background: var(--cream);
+    color: var(--text-primary);
+    border: 1.5px solid var(--border-color);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' fill='%23f6a89c' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    padding-right: 22px;
+    min-width: 80px;
+    max-width: 120px;
+    flex-shrink: 1;
+}
+
+/* New: Small Buttons (Clear Sel and Region Toggle) */
+.btn-small {
+    background: linear-gradient(135deg, var(--coral) 0%, #f89c8e 100%);
+    color: white;
+    border: none;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.1px;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(246, 168, 156, 0.25);
+    min-width: 50px; /* For "Clear Sel" text */
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-small:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(246, 168, 156, 0.35);
+}
+
+.region-btn {
+    min-width: 20px; /* Smaller for icon-only */
+    width: 20px;
+    height: 20px;
+    border-radius: 50%; /* Circular for icon feel */
+    font-size: 12px; /* For emoji/symbol */
+    padding: 0;
+    background: linear-gradient(135deg, var(--mint) 0%, #8fd3cc 100%); /* Mint for selection tool */
+}
+
+.region-btn:hover {
+    background: linear-gradient(135deg, #218838 0%, #28a745 100%); /* Darker mint/green on hover */
+}
+
+.region-btn.active {
+    background: linear-gradient(135deg, var(--coral) 0%, #f89c8e 100%); /* Coral when active */
+}
+
+.region-btn.active:hover {
+    background: linear-gradient(135deg, #e87a6b 0%, #f6a89c 100%);
+}
+
+/* --- CONTROL PANEL - FLEXIBLE --- */
+.control-panel {
+    background: var(--panel-bg);
+    border-top: 1.5px solid var(--border-color);
+    padding: clamp(12px, 1.5vh, 16px) clamp(16px, 2vw, 24px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 1vh, 12px);
+    flex-shrink: 0;
+    min-height: 150px;
+    max-height: 30vh;
+    overflow: hidden;
+}
+
+.controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(12px, 2vw, 20px);
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
+}
+
+/* Slider Columns - Flexible */
+.slider-column {
+    flex: 1 1 180px;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(6px, 0.8vh, 10px);
+    background: linear-gradient(135deg, var(--cream) 0%, white 100%);
+    padding: clamp(10px, 1.5vh, 14px);
+    border-radius: 8px;
+    border: 1.5px solid var(--border-color);
+    min-width: 0;
+    overflow: hidden;
+}
+
+.column-header {
+    text-align: center;
+    font-weight: 700;
+    color: var(--text-accent);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+}
+
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    flex: 1;
+    min-height: 30px;
+}
+
+.slider-row span {
+    min-width: 45px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+/* Sliders - Responsive */
+input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    height: 18px;
+    min-width: 0;
+    margin: 4px 0; /* Add vertical margin for better centering */
+}
+
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 16px;
+    width: 16px;
+    border-radius: 8px;
+    background: var(--coral);
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(246, 168, 156, 0.3);
+    position: relative;
+    top: 50%; /* Center vertically */
+    transform: translateY(-50%); /* Perfect vertical centering */
+    margin-top: -0.5px; /* Fine-tune adjustment */
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 5px;
+    background: linear-gradient(90deg, var(--warm), var(--coral));
+    border-radius: 2.5px;
+    margin: 6.5px 0; /* Adjust track position to align with thumb */
+}
+
+/* Action Column - Responsive */
+.action-column {
+    flex: 0 1 180px;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 1vh, 12px);
+    background: linear-gradient(135deg, var(--cream) 0%, white 100%);
+    padding: clamp(10px, 1.5vh, 14px);
+    border-radius: 8px;
+    border: 1.5px solid var(--border-color);
+    min-width: 0;
+}
+
+.action-column label {
+    color: var(--text-accent);
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    flex-shrink: 0;
+}
+
+/* Removed: .region-control (no longer in HTML) */
+
+/* Checkbox (for any remaining, like maskInner if re-added) */
+input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--coral);
+    cursor: pointer;
+}
+
+/* Button - Responsive */
+.btn {
+    background: linear-gradient(135deg, var(--coral) 0%, #f89c8e 100%);
+    color: white;
+    border: none;
+    padding: clamp(8px, 1vh, 10px) clamp(12px, 1.5vw, 16px);
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 6px rgba(246, 168, 156, 0.25);
+    flex-shrink: 0;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(246, 168, 156, 0.35);
+}
+
+/* Progress Bar */
+.progress-container {
+    height: 4px;
+    background: var(--sand);
+    border-radius: 2px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--warm), var(--coral), var(--mint));
+    transition: width 0.3s ease;
+}
+
+/* --- RESPONSIVE BREAKPOINTS --- */
+
+/* Medium screens - Stack controls vertically if needed */
+@media (max-width: 1000px) {
+    .main-stage {
+        grid-template-columns: 1fr;
+        grid-template-rows: 3fr 2fr;
+        gap: 12px;
+    }
+    
+    .input-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-rows: 1fr;
+    }
+    
+    .output-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: 1fr;
+    }
+    
+    /* Adjust footer on smaller cards */
+    .card-footer {
+        justify-content: flex-start;
+        gap: 2px;
+    }
+    
+    .btn-small {
+        min-width: 40px;
+        font-size: 9px;
+        padding: 2px 4px;
+    }
+    
+    .region-btn {
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+    }
+}
+
+/* Small screens - Stack everything */
+@media (max-width: 768px) {
+    body {
+        overflow-y: auto;
+        height: auto;
+        min-height: 100vh;
+    }
+    
+    .main-stage {
+        grid-template-rows: auto auto;
+        gap: 16px;
+    }
+    
+    .input-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(200px, auto));
+    }
+    
+    .output-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(2, minmax(200px, auto));
+    }
+    
+    .controls-row {
+        flex-direction: column;
+    }
+    
+    .slider-column,
+    .action-column {
+        flex: 1 1 auto;
+        width: 100%;
+    }
+    
+    .card-body {
+        flex-direction: column;
+    }
+    
+    .viewport {
+        aspect-ratio: 16/9;
+    }
+    
+    /* Footer adjustments for mobile */
+    .card-footer {
+        height: auto;
+        padding: 6px 0;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 4px;
+    }
+    
+    select {
+        min-width: 70px;
+        max-width: 100px;
+    }
+    
+    .btn-small {
+        min-width: 35px;
+        padding: 3px 5px;
+        font-size: 9px;
+    }
+    
+    .region-btn {
+        width: 16px;
+        height: 16px;
+        font-size: 9px;
+    }
+}
+
+/* Very small screens - Single column */
+@media (max-width: 480px) {
+    .input-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(4, minmax(180px, auto));
+    }
+    
+    .output-grid {
+        grid-template-rows: repeat(2, minmax(180px, auto));
+    }
+    
+    .card-body {
+        flex-direction: row; /* Keep side-by-side on mobile */
+    }
+    
+    .viewport {
+        aspect-ratio: 1/1;
+    }
+    
+    /* Compact footer for tiny screens */
+    .card-footer {
+        font-size: 11px;
+        height: auto;
+        gap: 2px;
+    }
+    
+    .card-footer span {
+        min-width: 40px;
+        font-size: 10px;
+    }
+    
+    select {
+        min-width: 60px;
+        padding: 2px 6px;
+        font-size: 10px;
+    }
+    
+    .btn-small {
+        min-width: 30px;
+        padding: 2px 4px;
+        font-size: 8px;
+    }
+    
+    .region-btn {
+        width: 14px;
+        height: 14px;
+        font-size: 8px;
+    }
+}
+
+/* --- UTILITY CLASSES --- */
+.active-output {
+    border-color: var(--coral);
+    background: linear-gradient(135deg, #ffffff 0%, var(--cream) 100%);
+    box-shadow: 0 3px 10px rgba(246, 168, 156, 0.15);
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(242, 230, 216, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--coral);
+    border-radius: 3px;
+}
+
+/* File input */
+#fileInput {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}

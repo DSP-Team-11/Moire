@@ -1,0 +1,85 @@
+{
+    "arrays": [
+        {
+            "center": [
+                -4.0,
+                0.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 7.125016348901795,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        },
+        {
+            "center": [
+                4.0,
+                0.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": -41.18592516570965,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        },
+        {
+            "center": [
+                4.0,
+                10.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 254.05460409907712,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        },
+        {
+            "center": [
+                -4.0,
+                10.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.2,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 153.43494882292202,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                }
+            ]
+        }
+    ],
+    "target": {
+        "x": -3.0,
+        "y": 8.0
+    },
+    "follow_target": true
+}

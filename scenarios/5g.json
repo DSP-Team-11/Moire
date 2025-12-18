@@ -1,0 +1,52 @@
+{
+    "arrays": [
+        {
+            "center": [
+                0.0,
+                0.0
+            ],
+            "num_elements": 8,
+            "spacing": 0.004,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 0,
+            "type": "electormagnitic",
+            "frequencies": [
+                {
+                    "frequency": 40000000000,
+                    "phase": 0,
+                    "amplitude": 1
+                }
+            ]
+        },
+        {
+            "center": [
+                20.0,
+                100.0
+            ],
+            "num_elements": 8,
+            "spacing": 1e-06,
+            "curvature": 0.0,
+            "rotation": 0,
+            "steering_angle": 90,
+            "type": "acoustic",
+            "frequencies": [
+                {
+                    "frequency": 1000,
+                    "phase": 0,
+                    "amplitude": 1.0
+                },
+                {
+                    "frequency": 500,
+                    "phase": 0,
+                    "amplitude": 1
+                }
+            ]
+        }
+    ],
+    "target": {
+        "x": 20.0,
+        "y": 100.0
+    },
+    "follow_target": false
+}
