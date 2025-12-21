@@ -34,50 +34,6 @@ def upload():
         return jsonify({'msg': 'success'})
     return jsonify({'msg': 'failed'}), 400
 
-# ---------------------- UNIFIED GET VIEW ----------------------
-# In routes.py, update the get_view function:
-
-@bp.route('/get_view', methods=['POST'])
-def get_view():
-    data = request.json
-    slot = str(data.get('slot_id'))
-    view_type = data.get('type')
-    is_output = data.get('is_output', False)
-
-    if is_output:
-        # Handle output ports
-        output_key = f'output_{slot}'
-        output_model = manager_instance.get_output(output_key)
-        
-        if not output_model:
-            # No output yet - return empty string with 200 OK
-            # This is normal when no mixing has been done yet
-            return jsonify({'image': ''})
-        
-        # Use the same get_encoded_view method
-        try:
-            b64 = output_model.get_encoded_view(view_type)
-            return jsonify({'image': b64})
-        except Exception as e:
-            print(f"Error getting output view for {output_key}, type {view_type}: {e}")
-            # Return empty string on error too
-            return jsonify({'image': ''})
-    else:
-        # Handle input images
-        img = manager_instance.get_image(slot)
-        if not img:
-            # For input images, return error with 404
-            # This indicates the slot is truly empty (no uploaded image)
-            return jsonify({'error': 'Empty'}), 404
-        
-        try:
-            b64 = img.get_encoded_view(view_type)
-            return jsonify({'image': b64})
-        except Exception as e:
-            print(f"Error getting input view for slot {slot}, type {view_type}: {e}")
-            # Return empty string for input images too on error
-            return jsonify({'image': ''})
-
 # ---------------------- START MIXING ----------------------
 # In your /mix route:
 @bp.route('/mix', methods=['POST'])
@@ -165,16 +121,108 @@ def mix_status():
     """Frontend polls this every 200ms."""
     return jsonify(mixing_worker.get_status())
 
-# ---------------------- CLEAR OUTPUT (OPTIONAL) ----------------------
+# ---------------------- CLEAR ALL IMAGES ----------------------
+@bp.route('/clear_all', methods=['POST'])
+def clear_all():
+    """Clear all images from the manager"""
+    try:
+        print("Clearing all images from manager...")
+        
+        # Clear all input slots
+        for slot_id in ['1', '2', '3', '4']:
+            manager_instance.images[slot_id] = None
+        
+        # Clear all outputs
+        manager_instance.outputs = { 'output_1': None, 'output_2': None }
+        
+        # Clear mixing worker if it exists
+        try:
+            mixing_worker.clear()
+        except:
+            pass  # Ignore if mixing_worker doesn't have clear method
+        
+        print("All images cleared successfully")
+        return jsonify({'msg': 'All images cleared successfully'})
+    except Exception as e:
+        print(f"Error clearing all images: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------- CLEAR INPUT SLOT ----------------------
+@bp.route('/clear_input/<slot_id>', methods=['POST'])
+def clear_input(slot_id):
+    """Clear a specific input slot"""
+    try:
+        if slot_id in manager_instance.images:
+            manager_instance.images[slot_id] = None
+            print(f"Input slot {slot_id} cleared")
+            return jsonify({'msg': f'Input slot {slot_id} cleared'})
+        else:
+            return jsonify({'error': f'Invalid slot_id: {slot_id}'}), 400
+    except Exception as e:
+        print(f"Error clearing input slot {slot_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------- CLEAR OUTPUT ----------------------
 @bp.route('/clear_output/<output_port>', methods=['POST'])
 def clear_output(output_port):
     """Clear a specific output port"""
     try:
         output_key = f'output_{output_port}'
-        manager_instance.clear_output(output_key)
-        return jsonify({'msg': f'Output {output_port} cleared'})
+        if output_key in manager_instance.outputs:
+            manager_instance.outputs[output_key] = None
+            print(f"Output {output_port} cleared")
+            return jsonify({'msg': f'Output {output_port} cleared'})
+        else:
+            return jsonify({'error': f'Invalid output_port: {output_port}'}), 400
     except Exception as e:
+        print(f"Error clearing output {output_port}: {e}")
         return jsonify({'error': str(e)}), 500
+
+# ---------------------- UPDATE GET_VIEW FOR EMPTY RESPONSES ----------------------
+@bp.route('/get_view', methods=['POST'])
+def get_view():
+    data = request.json
+    slot = str(data.get('slot_id'))
+    view_type = data.get('type')
+    is_output = data.get('is_output', False)
+
+    if is_output:
+        # Handle output ports
+        output_key = f'output_{slot}'
+        output_model = manager_instance.get_output(output_key)
+        
+        if not output_model:
+            # Return empty string for non-existent outputs
+            return jsonify({'image': ''})
+        
+        try:
+            b64 = output_model.get_encoded_view(view_type)
+            return jsonify({'image': b64})
+        except Exception as e:
+            print(f"Error getting output view for {output_key}, type {view_type}: {e}")
+            return jsonify({'image': ''})
+    else:
+        # Handle input images
+        img = manager_instance.get_image(slot)
+        if not img:
+            # For empty input slots, return 404
+            return jsonify({'error': 'Empty'}), 404
+        
+        try:
+            b64 = img.get_encoded_view(view_type)
+            return jsonify({'image': b64})
+        except Exception as e:
+            print(f"Error getting input view for slot {slot}, type {view_type}: {e}")
+            return jsonify({'error': str(e)}), 500
+        
+
+#----------------------------RESET IMAGING------------------------------
+@bp.route("/reset", methods=["POST"])
+def reset():
+    manager_instance.clear_all_inputs()
+    manager_instance.clear_all_outputs()
+    return "", 204
+   
 
 #----------------------------BEAMFORMING------------------------------
 

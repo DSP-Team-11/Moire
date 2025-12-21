@@ -7,6 +7,7 @@ let targetOutput = 1;
 let mixingActive = false;
 let pollingInterval = null;
 let currentJobId = 0;
+let isMixing = false; // Lock to prevent multiple simultaneous mixes
 
 let bcState = {};
 let dragTarget = null;
@@ -524,6 +525,54 @@ function updateRegionButton(slot) {
 }
 
 // ==========================================================
+// SLIDER HANDLERS
+// ==========================================================
+function setupSliderHandlers() {
+    console.log("Setting up slider handlers...");
+    
+    // Get all weight sliders
+    const weightSliders = [
+        'wa1', 'wa2', 'wa3', 'wa4',
+        'wb1', 'wb2', 'wb3', 'wb4'
+    ];
+    
+    // Setup handlers for each slider
+    weightSliders.forEach(sliderId => {
+        const slider = document.getElementById(sliderId);
+        const valueDisplay = document.getElementById(sliderId + '-value');
+        
+        if (slider && valueDisplay) {
+            // Update display when slider changes
+            slider.addEventListener('input', function() {
+                valueDisplay.textContent = this.value + '%';
+                // No automatic mixing - only on button click
+            });
+            
+            // Also update on page load to show current value
+            valueDisplay.textContent = slider.value + '%';
+        }
+    });
+    
+    // Setup reset buttons if they exist
+    const resetButtons = document.querySelectorAll('.reset-btn');
+    resetButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const sliderId = this.getAttribute('data-slider');
+            const slider = document.getElementById(sliderId);
+            const defaultValue = this.getAttribute('data-default') || '50';
+            
+            if (slider) {
+                slider.value = defaultValue;
+                const valueDisplay = document.getElementById(sliderId + '-value');
+                if (valueDisplay) {
+                    valueDisplay.textContent = defaultValue + '%';
+                }
+            }
+        });
+    });
+}
+
+// ==========================================================
 // INITIALIZATION
 // ==========================================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -540,14 +589,10 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleMixingMode(); // Initialize with basic mode
     }
     
-    // REMOVE THESE LINES - Don't load output components on page load
-    // updateOutputCompView(1);
-    // updateOutputCompView(2);
-    
     // Instead, just clear them
     clearOutputComponentImagesOnLoad();
     
-    // Remove oninput handlers from sliders and add change handlers instead
+    // Initialize slider handlers
     setupSliderHandlers();
 });
 
@@ -568,17 +613,27 @@ function clearOutputComponentImagesOnLoad() {
 }
 
 // ==========================================================
-// REALTIME MIX (ONLY ON BUTTON CLICK)
+// REALTIME MIX (ONLY ON BUTTON CLICK) - FIXED VERSION
 // ==========================================================
 async function requestMix() {
+    // Prevent multiple simultaneous mixes
+    if (isMixing) {
+        console.log('Already mixing, please wait...');
+        return;
+    }
+    
     console.log('Mix Images button clicked');
     
+    isMixing = true;
     // Increase job id ⇒ this automatically cancels old polling loops
     currentJobId++;
     const jobId = currentJobId;
 
     // Stop previous polling
-    if (pollingInterval) clearInterval(pollingInterval);
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
 
     // Reset progress bar
     const pbar = document.getElementById('pbar');
@@ -660,7 +715,7 @@ async function requestMix() {
 
     } catch (error) {
         console.error('Error starting mix:', error);
-        // Show error to user
+        isMixing = false;
         alert(`Error starting mix: ${error.message}`);
         return; // Stop if there was an error
     }
@@ -670,6 +725,7 @@ async function requestMix() {
         // If a newer job started, stop polling
         if (jobId !== currentJobId) {
             clearInterval(pollingInterval);
+            isMixing = false;
             return;
         }
 
@@ -677,6 +733,8 @@ async function requestMix() {
             const res = await fetch('/mix_status');
             if (!res.ok) {
                 console.error('Error fetching mix status:', res.status);
+                clearInterval(pollingInterval);
+                isMixing = false;
                 return;
             }
             
@@ -686,39 +744,59 @@ async function requestMix() {
             // Update progress bar
             if (pbar) pbar.style.width = data.progress + "%";
 
-            // If finished, update output images
-            if (!data.running && data.result) {
+            // ==========================================================
+            // FIXED: Stop polling when job is done, regardless of result
+            // ==========================================================
+            if (!data.running) {
                 clearInterval(pollingInterval);
+                pollingInterval = null;
+                isMixing = false;
 
-                // Update main output image
-                const outEl = document.getElementById('outImg' + targetOutput);
-                if (outEl) {
-                    outEl.src = "data:image/png;base64," + data.result;
+                // If we have a result, update the image
+                if (data.result) {
+                    // Update main output image
+                    const outEl = document.getElementById('outImg' + targetOutput);
+                    if (outEl) {
+                        outEl.src = "data:image/png;base64," + data.result;
 
-                    // Apply brightness/contrast if state exists
-                    const bcKey = 'outImg' + targetOutput;
-                    if (bcState[bcKey]) {
-                        const { b, c } = bcState[bcKey];
-                        outEl.style.filter = `brightness(${b}%) contrast(${c}%)`;
+                        // Apply brightness/contrast if state exists
+                        const bcKey = 'outImg' + targetOutput;
+                        if (bcState[bcKey]) {
+                            const { b, c } = bcState[bcKey];
+                            outEl.style.filter = `brightness(${b}%) contrast(${c}%)`;
+                        }
                     }
-                }
 
-                // Update output component view
-                await updateOutputCompView(targetOutput);
+                    // Update output component view
+                    await updateOutputCompView(targetOutput);
+                    console.log('Mix completed successfully');
+                } else {
+                    console.warn("Mix finished but no result returned");
+                }
 
                 // Reset bar after a small delay
                 setTimeout(() => { if (pbar) pbar.style.width = "0%"; }, 300);
             }
+            // ==========================================================
+            // END OF FIX
+            // ==========================================================
+            
         } catch (error) {
             console.error('Error polling mix status:', error);
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+            isMixing = false;
         }
 
     }, 150); // poll 6 times per second
 }
 
+// ==========================================================
+// RESET ON  REFRESH
+// ==========================================================
+window.addEventListener("load", () => {
+    fetch("/reset", {
+        method: "POST"
+    }).catch(err => console.error("Reset failed:", err));
+});
 
-// ==========================================================
-// REMOVED: DEBOUNCED MIX REQUEST (NO MORE AUTOMATIC MIXING)
-// ==========================================================
-// The scheduleMix() function has been completely removed
-// Mixing now only happens when the "Mix Images" button is clicked
