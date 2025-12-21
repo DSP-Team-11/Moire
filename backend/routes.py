@@ -215,14 +215,12 @@ def get_view():
             print(f"Error getting input view for slot {slot}, type {view_type}: {e}")
             return jsonify({'error': str(e)}), 500
         
-
 #----------------------------RESET IMAGING------------------------------
 @bp.route("/reset", methods=["POST"])
 def reset():
     manager_instance.clear_all_inputs()
     manager_instance.clear_all_outputs()
     return "", 204
-   
 
 #----------------------------BEAMFORMING------------------------------
 
