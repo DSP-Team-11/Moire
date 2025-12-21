@@ -3,6 +3,8 @@ class BeamFormingApp {
         this.baseUrl = window.location.origin;
         this.currentState = {};
         this.isUpdating = false;
+        this.defaultScenario = 'custom';
+
         
         this.initializeElements();
         this.bindEvents();
@@ -63,16 +65,32 @@ class BeamFormingApp {
     
     async initializeApp() {
         this.updateStatus('Initializing application...', 'info');
-        
+
         try {
+            // 1️⃣ Reset backend state
+            await fetch(`${this.baseUrl}/reset`, { method: 'POST' });
+
+            // 2️⃣ Set scenario selector to default
+            this.scenarioSelect.value = this.defaultScenario;
+
+            // 3️⃣ Load default scenario automatically
+            await fetch(`${this.baseUrl}/load_scenario`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scenario: this.defaultScenario })
+            });
+
+            // 4️⃣ Fetch updated state and visuals
             await this.fetchInitialState();
             await this.updateVisualizations();
-            this.updateStatus('Ready', 'success');
+
+            this.updateStatus('Ready (Custom scenario loaded)', 'success');
         } catch (error) {
             console.error('Initialization error:', error);
             this.updateStatus('Initialization failed', 'error');
         }
     }
+
     
     async fetchInitialState() {
         try {
@@ -356,4 +374,13 @@ class BeamFormingApp {
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new BeamFormingApp();
+});
+
+// ==========================================================
+// RESET ON  REFRESH
+// ==========================================================
+window.addEventListener("load", () => {
+    fetch("/reset", {
+        method: "POST",
+    }).catch(err => console.error("Reset failed:", err));
 });

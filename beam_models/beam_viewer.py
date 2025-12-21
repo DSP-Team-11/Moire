@@ -12,7 +12,14 @@ class BeamViewer:
     """Handles visualization of beam patterns and wave maps"""
     
     def __init__(self):
-        self.figure_size = (10, 8)
+        self.figure_size = (10, 10)
+
+    def _figure_to_base64(self, fig):
+        """Convert a Matplotlib figure to base64-encoded PNG"""
+        buf = io.BytesIO()
+        FigureCanvas(fig).print_png(buf)
+        encoded = base64.b64encode(buf.getbuffer()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"    
     
     def generate_wave_map_image(self, wave_map):
         """Generate base64 encoded image of wave map"""
@@ -38,10 +45,7 @@ class BeamViewer:
         plt.setp(cbar.ax.get_yticklabels(), color='white')
         
         # Convert to base64
-        buf = io.BytesIO()
-        FigureCanvas(fig).print_png(buf)
-        data = base64.b64encode(buf.getbuffer()).decode("ascii")
-        return f"data:image/png;base64,{data}"
+        return self._figure_to_base64(fig)
     
     def generate_beam_profile_image(self, angles, response):
         """Generate base64 encoded image of beam profile"""
@@ -50,15 +54,12 @@ class BeamViewer:
         
         ax.plot(angles, response, color='b', linewidth=2)
         ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
+        ax.set_theta_direction(-1) #clockwise
         ax.set_rticks([])
         ax.set_ylim(0, 1)
         ax.set_facecolor('#1E293B')
         ax.tick_params(colors='white')
         ax.grid(color='gray', alpha=0.3)
         
-        # Convert to base64
-        buf = io.BytesIO()
-        FigureCanvas(fig).print_png(buf)
-        data = base64.b64encode(buf.getbuffer()).decode("ascii")
-        return f"data:image/png;base64,{data}"
+         # Convert to base64
+        return self._figure_to_base64(fig)

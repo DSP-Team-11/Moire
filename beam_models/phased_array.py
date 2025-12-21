@@ -86,10 +86,14 @@ class PhasedArray:
             return self._calculate_linear_beam_profile(angles)
         else:  # Curvilinear
             return self._calculate_curvilinear_beam_profile(angles)
+        
+    def calculate_wave_number(self):
+        return 2 * np.pi / (1 / self.current_frequency) #Wave number
+
 
     def _calculate_linear_beam_profile(self, angles):
         """Calculate beam profile for linear array"""
-        k = 2 * np.pi / (1 / self.current_frequency)
+        k = self.calculate_wave_number()
         
         if len(self.transmitters) > 1:
             distance_between = abs(self.transmitters[0].x_position - 
@@ -102,18 +106,19 @@ class PhasedArray:
             phase_shifts = k * np.arange(len(self.transmitters)) * \
                         distance_between * np.sin(theta) - \
                         np.arange(len(self.transmitters)) * (self.phase_shift)
-            array_response = np.sum(np.exp(1j * phase_shifts))
-            response.append(abs(array_response))
+            array_response = np.sum(np.exp(1j * phase_shifts)) #Complex summation of waves
+            response.append(abs(array_response)) #Magnitude = beam strength
         
         response = np.array(response)
         if np.max(response) > 0:
-            response = response / np.max(response)
+            #Normalize beam profile
+            response = self.normalize_response(response)
         
         return angles.tolist(), response.tolist()
 
     def _calculate_curvilinear_beam_profile(self, angles):
         """Calculate beam profile for curvilinear array"""
-        k = 2 * np.pi / (1 / self.current_frequency)
+        k = self.calculate_wave_number()
         
         response = []
         for theta in angles:
@@ -130,12 +135,17 @@ class PhasedArray:
         
         response = np.array(response)
         if np.max(response) > 0:
-            response = response / np.max(response)
+            response = self.normalize_response(response)
         
         return angles.tolist(), response.tolist()
+    
+    def normalize_response(self,response):
+         return response / np.max(response)
+
     def get_transmitter_positions(self):
         """Get scaled transmitter positions for visualization"""
         positions = []
+        #convert to pixel coordinates
         for transmitter in self.transmitters:
             scaled_x = (transmitter.x_position * (self.x_grid_size/2) / 
                        self.current_x_range) + self.x_grid_size/2
