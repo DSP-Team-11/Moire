@@ -376,11 +376,3 @@ document.addEventListener('DOMContentLoaded', () => {
     window.app = new BeamFormingApp();
 });
 
-// ==========================================================
-// RESET ON  REFRESH
-// ==========================================================
-window.addEventListener("load", () => {
-    fetch("/reset", {
-        method: "POST",
-    }).catch(err => console.error("Reset failed:", err));
-});
