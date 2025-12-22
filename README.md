@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌊 Fourier Transform Mixer & Beamforming Simulator
+# 🌊MOIRÉ: Fourier Transform Mixer & Beamforming Simulator
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.8+-blue.svg" alt="Python">
