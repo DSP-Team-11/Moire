@@ -1,85 +1,735 @@
 // ==========================================================
-// GLOBAL STATE
+// CLASS DEFINITIONS
 // ==========================================================
-let currentSlot = 1;
-let targetOutput = 1;
 
-let mixingActive = false;
-let pollingInterval = null;
-let currentJobId = 0;
-let isMixing = false; // Lock to prevent multiple simultaneous mixes
-
-let bcState = {};
-let dragTarget = null;
-let startX = 0, startY = 0;
-
-// Region drawing state
-let regionState = {
-    isDrawing: false,
-    drawingSlot: null,
-    startX: 0,
-    startY: 0,
-    currentRect: null,
-    
-    // Store individual regions for each component
-    regions: {
-        1: { type: 'inner', x: 0, y: 0, width: 100, height: 100, isSet: false },
-        2: { type: 'inner', x: 0, y: 0, width: 100, height: 100, isSet: false },
-        3: { type: 'inner', x: 0, y: 0, width: 100, height: 100, isSet: false },
-        4: { type: 'inner', x: 0, y: 0, width: 100, height: 100, isSet: false }
+/**
+ * Manages region drawing state for a single component
+ */
+class Region {
+    constructor(slot, type = 'inner', x = 0, y = 0, width = 100, height = 100) {
+        this.slot = slot;
+        this.type = type;
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.isSet = false;
+        this.element = null;
     }
-};
 
-// Mixing mode state
-let currentMixingMode = 'basic'; // 'basic' or 'region'
+    /**
+     * Updates region dimensions based on drawing coordinates
+     */
+    updateFromDrawing(startX, startY, currentX, currentY, viewportRect) {
+        const xPercent = ((startX) / viewportRect.width) * 100;
+        const yPercent = ((startY) / viewportRect.height) * 100;
+        const widthPercent = ((currentX - startX) / viewportRect.width) * 100;
+        const heightPercent = ((currentY - startY) / viewportRect.height) * 100;
+        
+        this.x = Math.max(0, Math.min(xPercent, 100));
+        this.y = Math.max(0, Math.min(yPercent, 100));
+        this.width = Math.max(1, Math.min(Math.abs(widthPercent), 100));
+        this.height = Math.max(1, Math.min(Math.abs(heightPercent), 100));
+        this.isSet = true;
+    }
+
+    /**
+     * Updates region from dragged rectangle position
+     */
+    updateFromDrag(rectElement, overlayRect) {
+        this.x = (parseFloat(rectElement.style.left) / overlayRect.width) * 100;
+        this.y = (parseFloat(rectElement.style.top) / overlayRect.height) * 100;
+        this.width = (parseFloat(rectElement.style.width) / overlayRect.width) * 100;
+        this.height = (parseFloat(rectElement.style.height) / overlayRect.height) * 100;
+    }
+
+    /**
+     * Toggles between inner and outer region types
+     */
+    toggleType() {
+        this.type = this.type === 'inner' ? 'outer' : 'inner';
+        return this.type;
+    }
+
+    /**
+     * Creates a rectangle element for this region
+     */
+    createRectangleElement() {
+        const rect = document.createElement('div');
+        rect.className = `region-rectangle ${this.type}`;
+        rect.setAttribute('data-slot', this.slot);
+        this.element = rect;
+        return rect;
+    }
+
+    /**
+     * Updates rectangle element position and size
+     */
+    updateRectangleElement(overlayRect) {
+        if (!this.element) return;
+        
+        this.element.className = `region-rectangle ${this.type}`;
+        this.element.style.left = `${(this.x / 100) * overlayRect.width}px`;
+        this.element.style.top = `${(this.y / 100) * overlayRect.height}px`;
+        this.element.style.width = `${(this.width / 100) * overlayRect.width}px`;
+        this.element.style.height = `${(this.height / 100) * overlayRect.height}px`;
+    }
+
+    /**
+     * Resets region to default values
+     */
+    reset() {
+        this.type = 'inner';
+        this.x = 0;
+        this.y = 0;
+        this.width = 100;
+        this.height = 100;
+        this.isSet = false;
+    }
+
+    /**
+     * Converts to payload format for API
+     */
+    toPayload() {
+        return {
+            type: this.type,
+            x: this.x,
+            y: this.y,
+            width: this.width,
+            height: this.height
+        };
+    }
+}
+
+/**
+ * Manages brightness/contrast state for an image
+ */
+class BrightnessContrastState {
+    constructor() {
+        this.states = new Map(); // imgId -> {b, c}
+    }
+
+    setState(imgId, b = 100, c = 100) {
+        this.states.set(imgId, { b, c });
+    }
+
+    getState(imgId) {
+        return this.states.get(imgId) || { b: 100, c: 100 };
+    }
+
+    update(imgId, deltaB, deltaC) {
+        const state = this.getState(imgId);
+        state.c = Math.max(0, state.c + deltaC);
+        state.b = Math.max(0, state.b + deltaB);
+        this.states.set(imgId, state);
+        return state;
+    }
+
+    applyToElement(imgId, element) {
+        const state = this.getState(imgId);
+        if (element && state) {
+            element.style.filter = `brightness(${state.b}%) contrast(${state.c}%)`;
+        }
+    }
+
+    remove(imgId) {
+        this.states.delete(imgId);
+    }
+}
+
+/**
+ * Manages region drawing operations
+ */
+class RegionDrawingManager {
+    constructor(regionManager) {
+        this.regionManager = regionManager;
+        this.isDrawing = false;
+        this.drawingSlot = null;
+        this.startX = 0;
+        this.startY = 0;
+        this.currentRect = null;
+        this.isDragging = false;
+        this.draggingRect = null;
+        this.draggingSlot = null;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.dragStartLeft = 0;
+        this.dragStartTop = 0;
+    }
+
+    startDrawing(e, slot) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const viewport = document.getElementById(`viewport-compImg${slot}`);
+        const overlay = document.getElementById(`overlay-compImg${slot}`);
+        if (!viewport || !overlay) return;
+
+        // Remove existing rectangle
+        const existingRect = overlay.querySelector('.region-rectangle');
+        if (existingRect) existingRect.remove();
+
+        const rect = viewport.getBoundingClientRect();
+        this.startX = e.clientX - rect.left;
+        this.startY = e.clientY - rect.top;
+        this.isDrawing = true;
+        this.drawingSlot = slot;
+
+        // Create new rectangle
+        const region = this.regionManager.getRegion(slot);
+        this.currentRect = region.createRectangleElement();
+        this.currentRect.style.left = `${this.startX}px`;
+        this.currentRect.style.top = `${this.startY}px`;
+        this.currentRect.style.width = '0px';
+        this.currentRect.style.height = '0px';
+        this.currentRect.addEventListener('mousedown', (e) => this.startDragging(e, slot));
+        
+        overlay.appendChild(this.currentRect);
+    }
+
+    updateDrawing(e, slot) {
+        if (!this.isDrawing || this.drawingSlot !== slot || !this.currentRect) return;
+
+        const viewport = document.getElementById(`viewport-compImg${slot}`);
+        if (!viewport) return;
+
+        const rect = viewport.getBoundingClientRect();
+        const currentX = e.clientX - rect.left;
+        const currentY = e.clientY - rect.top;
+
+        const width = currentX - this.startX;
+        const height = currentY - this.startY;
+
+        this.currentRect.style.width = `${Math.abs(width)}px`;
+        this.currentRect.style.height = `${Math.abs(height)}px`;
+
+        if (width < 0) this.currentRect.style.left = `${currentX}px`;
+        if (height < 0) this.currentRect.style.top = `${currentY}px`;
+    }
+
+    finishDrawing(slot) {
+        if (!this.isDrawing || this.drawingSlot !== slot || !this.currentRect) return;
+
+        const viewport = document.getElementById(`viewport-compImg${slot}`);
+        const overlay = document.getElementById(`overlay-compImg${slot}`);
+        if (!viewport || !overlay) return;
+
+        const viewportRect = viewport.getBoundingClientRect();
+        const rectBounds = this.currentRect.getBoundingClientRect();
+
+        const startX = this.startX;
+        const startY = this.startY;
+        const endX = startX + (parseFloat(this.currentRect.style.width) * (rectBounds.left < viewportRect.left ? -1 : 1));
+        const endY = startY + (parseFloat(this.currentRect.style.height) * (rectBounds.top < viewportRect.top ? -1 : 1));
+
+        const region = this.regionManager.getRegion(slot);
+        region.updateFromDrawing(
+            Math.min(startX, endX),
+            Math.min(startY, endY),
+            Math.max(startX, endX),
+            Math.max(startY, endY),
+            viewportRect
+        );
+
+        this.regionManager.updateRegionUI(slot);
+        this.resetDrawingState();
+    }
+
+    startDragging(e, slot) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        this.isDragging = true;
+        this.draggingRect = e.target;
+        this.draggingSlot = slot;
+        this.dragStartX = e.clientX;
+        this.dragStartY = e.clientY;
+        this.dragStartLeft = parseFloat(this.draggingRect.style.left) || 0;
+        this.dragStartTop = parseFloat(this.draggingRect.style.top) || 0;
+
+        document.addEventListener('mousemove', this.handleDrag.bind(this));
+        document.addEventListener('mouseup', this.stopDragging.bind(this));
+    }
+
+    handleDrag(e) {
+        if (!this.isDragging || !this.draggingRect || !this.draggingSlot) return;
+
+        const slot = this.draggingSlot;
+        const overlay = document.getElementById(`overlay-compImg${slot}`);
+        if (!overlay) return;
+
+        const overlayRect = overlay.getBoundingClientRect();
+        const deltaX = e.clientX - this.dragStartX;
+        const deltaY = e.clientY - this.dragStartY;
+
+        const rectWidth = parseFloat(this.draggingRect.style.width) || 0;
+        const rectHeight = parseFloat(this.draggingRect.style.height) || 0;
+        const maxLeft = overlayRect.width - rectWidth;
+        const maxTop = overlayRect.height - rectHeight;
+
+        const newLeft = Math.max(0, Math.min(this.dragStartLeft + deltaX, maxLeft));
+        const newTop = Math.max(0, Math.min(this.dragStartTop + deltaY, maxTop));
+
+        this.draggingRect.style.left = `${newLeft}px`;
+        this.draggingRect.style.top = `${newTop}px`;
+    }
+
+    stopDragging() {
+        if (!this.isDragging || !this.draggingRect || !this.draggingSlot) return;
+
+        const slot = this.draggingSlot;
+        const overlay = document.getElementById(`overlay-compImg${slot}`);
+        
+        if (overlay) {
+            const overlayRect = overlay.getBoundingClientRect();
+            const region = this.regionManager.getRegion(slot);
+            region.updateFromDrag(this.draggingRect, overlayRect);
+            this.regionManager.updateRegionUI(slot);
+        }
+
+        document.removeEventListener('mousemove', this.handleDrag.bind(this));
+        document.removeEventListener('mouseup', this.stopDragging.bind(this));
+        this.resetDraggingState();
+    }
+
+    resetDrawingState() {
+        this.isDrawing = false;
+        this.drawingSlot = null;
+        this.startX = 0;
+        this.startY = 0;
+        this.currentRect = null;
+    }
+
+    resetDraggingState() {
+        this.isDragging = false;
+        this.draggingRect = null;
+        this.draggingSlot = null;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.dragStartLeft = 0;
+        this.dragStartTop = 0;
+    }
+}
+
+/**
+ * Manages all regions across components
+ */
+class RegionManager {
+    constructor() {
+        this.regions = new Map();
+        this.drawingManager = new RegionDrawingManager(this);
+        this.currentMode = 'basic'; // 'basic' or 'region'
+        
+        // Initialize regions for slots 1-4
+        for (let i = 1; i <= 4; i++) {
+            this.regions.set(i, new Region(i));
+        }
+    }
+
+    getRegion(slot) {
+        return this.regions.get(slot);
+    }
+
+    setMode(mode) {
+        this.currentMode = mode;
+        this.updateAllRegionsUI();
+        
+        if (mode === 'basic') {
+            this.resetAllRegions();
+        }
+    }
+
+    resetAllRegions() {
+        this.regions.forEach(region => region.reset());
+    }
+
+    toggleRegionType(slot) {
+        const region = this.getRegion(slot);
+        if (region && region.isSet) {
+            region.toggleType();
+            this.updateRegionUI(slot);
+        }
+    }
+
+    updateRegionUI(slot) {
+        const region = this.getRegion(slot);
+        const overlay = document.getElementById(`overlay-compImg${slot}`);
+        
+        if (!overlay) return;
+
+        // Remove existing rectangle
+        const existingRect = overlay.querySelector('.region-rectangle');
+        if (existingRect) existingRect.remove();
+
+        // Add new rectangle if region is set and mode is region
+        if (region.isSet && this.currentMode === 'region') {
+            const overlayRect = overlay.getBoundingClientRect();
+            region.updateRectangleElement(overlayRect);
+            region.element.addEventListener('mousedown', (e) => 
+                this.drawingManager.startDragging(e, slot));
+            overlay.appendChild(region.element);
+        }
+
+        // Update button
+        this.updateRegionButton(slot);
+    }
+
+    updateAllRegionsUI() {
+        for (let i = 1; i <= 4; i++) {
+            this.updateRegionUI(i);
+        }
+    }
+
+    updateRegionButton(slot) {
+        const btn = document.getElementById(`region-type${slot}`);
+        if (!btn) return;
+
+        const region = this.getRegion(slot);
+        
+        if (this.currentMode === 'region') {
+            btn.style.display = 'block';
+            btn.textContent = region.type === 'inner' ? 'Selecting INSIDE' : 'Selecting OUTSIDE';
+            btn.className = `region-btn ${region.type}`;
+            
+            btn.disabled = !region.isSet;
+            btn.style.opacity = region.isSet ? '1' : '0.5';
+            btn.style.cursor = region.isSet ? 'pointer' : 'not-allowed';
+        } else {
+            btn.style.display = 'none';
+        }
+    }
+
+    toPayload() {
+        const payload = {};
+        this.regions.forEach((region, slot) => {
+            payload[slot] = region.toPayload();
+        });
+        return payload;
+    }
+
+    initializeEventListeners() {
+        for (let i = 1; i <= 4; i++) {
+            const viewport = document.getElementById(`viewport-compImg${i}`);
+            if (viewport) {
+                viewport.addEventListener('mousedown', (e) => this.drawingManager.startDrawing(e, i));
+                viewport.addEventListener('mousemove', (e) => this.drawingManager.updateDrawing(e, i));
+                viewport.addEventListener('mouseup', () => this.drawingManager.finishDrawing(i));
+                
+                const overlay = document.getElementById(`overlay-compImg${i}`);
+                if (overlay) {
+                    overlay.addEventListener('mousedown', (e) => this.drawingManager.startDrawing(e, i));
+                    overlay.addEventListener('mousemove', (e) => this.drawingManager.updateDrawing(e, i));
+                    overlay.addEventListener('mouseup', () => this.drawingManager.finishDrawing(i));
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Manages mixing operations
+ */
+class MixingManager {
+    constructor() {
+        this.pollingInterval = null;
+        this.currentJobId = 0;
+        this.isMixing = false;
+    }
+
+    async requestMix(regionManager, targetOutput, currentMixingMode) {
+        console.log('Mix Images button clicked');
+        
+        // Cancel any ongoing mixing
+        this.cancelCurrentMix();
+        
+        // Increment job ID for new job
+        this.currentJobId++;
+        const jobId = this.currentJobId;
+        
+        console.log(`Starting Job #${jobId}`);
+        
+        // Reset mixing lock
+        this.isMixing = false;
+
+        // Reset progress bar
+        this.resetProgressBar();
+
+        // Prepare payload
+        const payload = {
+            mode: this.getSliderValue('mixMode'),
+            target_output: targetOutput,
+            mixing_mode: currentMixingMode,
+            regions: regionManager.toPayload(),
+            wa1: this.getSliderValue('wa1'),
+            wa2: this.getSliderValue('wa2'),
+            wa3: this.getSliderValue('wa3'),
+            wa4: this.getSliderValue('wa4'),
+            wb1: this.getSliderValue('wb1'),
+            wb2: this.getSliderValue('wb2'),
+            wb3: this.getSliderValue('wb3'),
+            wb4: this.getSliderValue('wb4')
+        };
+
+        console.log(`Job #${jobId} - Starting new mix with payload:`, payload);
+
+        // Set mixing lock
+        this.isMixing = true;
+
+        try {
+            // Start mixing on backend
+            console.log(`Job #${jobId} - Sending request to backend...`);
+            await this.startMixingOnBackend(payload);
+            
+            console.log(`Job #${jobId} - Backend processing started, beginning progress polling...`);
+            
+            // Start polling for progress
+            this.startPolling(jobId, targetOutput);
+            
+        } catch (error) {
+            console.error(`Job #${jobId} - Error starting mix:`, error);
+            this.isMixing = false;
+            alert(`Error starting mix: ${error.message}`);
+        }
+    }
+
+    getSliderValue(id) {
+        const el = document.getElementById(id);
+        return el ? el.value : 0;
+    }
+
+    cancelCurrentMix() {
+        if (this.pollingInterval) {
+            console.log(`Cancelling previous mixing process for Job #${this.currentJobId}`);
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+    }
+
+    resetProgressBar() {
+        const pbar = document.getElementById('pbar');
+        if (pbar) {
+            pbar.style.width = "0%";
+            // Optional: Update progress bar text to show current job
+            pbar.setAttribute('data-current-job', this.currentJobId);
+        }
+    }
+
+    async startMixingOnBackend(payload) {
+        const response = await fetch('/mix', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Backend error: ${response.status} ${errorText}`);
+        }
+
+        return await response.json();
+    }
+
+    startPolling(jobId, targetOutput) {
+        this.pollingInterval = setInterval(async () => {
+            // Stop if a newer job started
+            if (jobId !== this.currentJobId) {
+                console.log(`Job #${jobId} - Stopping polling (replaced by Job #${this.currentJobId})`);
+                clearInterval(this.pollingInterval);
+                this.pollingInterval = null;
+                return;
+            }
+
+            try {
+                const data = await this.fetchMixStatus();
+                
+                // Log progress periodically (every 5% or when it changes significantly)
+                if (data.progress % 10 === 0 || data.progress === 100) {
+                    console.log(`Job #${jobId} - Progress: ${data.progress}%`);
+                }
+                
+                // Update progress bar
+                this.updateProgressBar(data.progress);
+                
+                // Stop polling when job is done
+                if (!data.running) {
+                    this.handleMixCompletion(jobId, data, targetOutput);
+                }
+                
+            } catch (error) {
+                console.error(`Job #${jobId} - Error polling mix status:`, error);
+                this.cleanupPolling(jobId);
+            }
+        }, 150);
+    }
+
+    async fetchMixStatus() {
+        const res = await fetch('/mix_status');
+        if (!res.ok) {
+            throw new Error(`Status fetch failed: ${res.status}`);
+        }
+        return await res.json();
+    }
+
+    updateProgressBar(progress) {
+        const pbar = document.getElementById('pbar');
+        if (pbar) pbar.style.width = `${progress}%`;
+    }
+
+    handleMixCompletion(jobId, data, targetOutput) {
+        console.log(`Job #${jobId} - Completed with ${data.progress}% progress`);
+        this.cleanupPolling(jobId);
+
+        if (data.result) {
+            console.log(`Job #${jobId} - Result received, updating output image...`);
+            this.updateOutputImage(data.result, targetOutput);
+        } else {
+            console.warn(`Job #${jobId} - Mix finished but no result returned`);
+        }
+
+        this.resetProgressBarWithDelay(jobId);
+    }
+
+    updateOutputImage(base64Image, targetOutput) {
+        const outEl = document.getElementById('outImg' + targetOutput);
+        if (outEl) {
+            outEl.src = "data:image/png;base64," + base64Image;
+            
+            // Apply brightness/contrast if state exists
+            const bcKey = 'outImg' + targetOutput;
+            if (bcState[bcKey]) {
+                const { b, c } = bcState[bcKey];
+                outEl.style.filter = `brightness(${b}%) contrast(${c}%)`;
+            }
+        }
+        
+        // Update component view
+        updateOutputCompView(targetOutput);
+    }
+
+    resetProgressBarWithDelay(jobId) {
+        setTimeout(() => {
+            const pbar = document.getElementById('pbar');
+            if (pbar) {
+                pbar.style.width = "0%";
+                console.log(`Job #${jobId} - Progress bar reset`);
+            }
+        }, 300);
+    }
+
+    cleanupPolling(jobId) {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+        this.isMixing = false;
+        if (jobId) {
+            console.log(`Job #${jobId} - Cleanup complete`);
+        }
+    }
+}
+
+/**
+ * Manages application state and coordinates all managers
+ */
+class AppState {
+    constructor() {
+        this.currentSlot = 1;
+        this.targetOutput = 1;
+        this.currentMixingMode = 'basic';
+        
+        this.bcState = new BrightnessContrastState();
+        this.regionManager = new RegionManager();
+        this.mixingManager = new MixingManager();
+        
+        this.dragTarget = null;
+        this.startX = 0;
+        this.startY = 0;
+    }
+
+    selectOutput(id) {
+        this.targetOutput = id;
+        document.querySelectorAll('.active-output')
+            .forEach(el => el.classList.remove('active-output'));
+        document.getElementById('outCard' + id).classList.add('active-output');
+        updateOutputCompView(id);
+    }
+
+    toggleMixingMode() {
+        const toggle = document.getElementById('modeToggle');
+        this.currentMixingMode = toggle.checked ? 'region' : 'basic';
+        
+        this.updateModeUI();
+        this.regionManager.setMode(this.currentMixingMode);
+    }
+
+    updateModeUI() {
+        const modeLabel = document.querySelector('.mode-label');
+        if (modeLabel) {
+            modeLabel.textContent = this.currentMixingMode === 'region' ? 'Region Mode' : 'Basic Mode';
+        }
+        
+        const regionInstructions = document.getElementById('regionInstructions');
+        if (regionInstructions) {
+            regionInstructions.style.display = this.currentMixingMode === 'region' ? 'block' : 'none';
+        }
+        
+        this.updateRegionRectanglesVisibility();
+    }
+
+    updateRegionRectanglesVisibility() {
+        for (let i = 1; i <= 4; i++) {
+            const overlay = document.getElementById(`overlay-compImg${i}`);
+            if (overlay) {
+                overlay.style.display = this.currentMixingMode === 'region' ? 'block' : 'none';
+            }
+        }
+    }
+
+    requestMix() {
+        this.mixingManager.requestMix(this.regionManager, this.targetOutput, this.currentMixingMode);
+    }
+}
 
 // ==========================================================
-// BRIGHTNESS / CONTRAST DRAG
+// GLOBAL INSTANCES (Replacing old global variables)
 // ==========================================================
+const appState = new AppState();
+const bcState = appState.bcState; // Alias for backward compatibility
+
+// ==========================================================
+// UPDATED GLOBAL FUNCTIONS (Using new OOP structure)
+// ==========================================================
+
 function startDrag(e, imgId) {
     if(e.button !== 0) return;
     e.preventDefault();
-    dragTarget = imgId;
-    startX = e.clientX;
-    startY = e.clientY;
-    if (!bcState[imgId]) bcState[imgId] = { b: 100, c: 100 };
+    appState.dragTarget = imgId;
+    appState.startX = e.clientX;
+    appState.startY = e.clientY;
+    if (!bcState.getState(imgId)) bcState.setState(imgId, 100, 100);
 }
 
 window.addEventListener('mousemove', (e) => {
-    if (!dragTarget || !bcState[dragTarget]) return;
+    if (!appState.dragTarget) return;
 
-    const dx = e.clientX - startX;
-    const dy = startY - e.clientY;
+    const dx = e.clientX - appState.startX;
+    const dy = appState.startY - e.clientY;
     const sensitivity = 0.5;
 
-    bcState[dragTarget].c += dx * sensitivity;
-    bcState[dragTarget].b += dy * sensitivity;
-
-    bcState[dragTarget].c = Math.max(0, bcState[dragTarget].c);
-    bcState[dragTarget].b = Math.max(0, bcState[dragTarget].b);
-
-    const el = document.getElementById(dragTarget);
+    const state = bcState.update(appState.dragTarget, dy * sensitivity, dx * sensitivity);
+    
+    const el = document.getElementById(appState.dragTarget);
     if(el) {
-        el.style.filter = `brightness(${bcState[dragTarget].b}%) contrast(${bcState[dragTarget].c}%)`;
+        el.style.filter = `brightness(${state.b}%) contrast(${state.c}%)`;
     }
 
-    startX = e.clientX;
-    startY = e.clientY;
+    appState.startX = e.clientX;
+    appState.startY = e.clientY;
 });
 
-window.addEventListener('mouseup', () => { dragTarget = null; });
-
-// ==========================================================
-// OUTPUT SELECT & MODE
-// ==========================================================
-function selectOutput(id) {
-    targetOutput = id;
-    document.querySelectorAll('.active-output')
-        .forEach(el => el.classList.remove('active-output'));
-    document.getElementById('outCard' + id).classList.add('active-output');
-    // Update the output component view for the selected output
-    updateOutputCompView(id);
-}
+window.addEventListener('mouseup', () => { appState.dragTarget = null; });
 
 function updateMode() {
     const mode = document.getElementById('mixMode').value;
@@ -87,74 +737,30 @@ function updateMode() {
         mode === 'magnitude_phase' ? "Magnitude" : "Real";
     document.getElementById('labelColB').innerText =
         mode === 'magnitude_phase' ? "Phase" : "Imaginary";
-    // Remove scheduleMix() - mixing only happens on button click
 }
 
-// ==========================================================
-// MIXING MODE TOGGLE (Simple switch)
-// ==========================================================
 function toggleMixingMode() {
-    const toggle = document.getElementById('modeToggle');
-    currentMixingMode = toggle.checked ? 'region' : 'basic';
-    
-    // Update mode label
-    const modeLabel = document.querySelector('.mode-label');
-    if (modeLabel) {
-        modeLabel.textContent = currentMixingMode === 'region' ? 'Region Mode' : 'Basic Mode';
-    }
-    
-    // Update region instructions visibility
-    const regionInstructions = document.getElementById('regionInstructions');
-    if (regionInstructions) {
-        if (currentMixingMode === 'region') {
-            regionInstructions.style.display = 'block';
-        } else {
-            regionInstructions.style.display = 'none';
-        }
-    }
-    
-    // Update region rectangles visibility
-    updateRegionRectanglesVisibility();
-    
-    // Update all rectangles
-    updateAllRectangles();
-    
-    // Reset all regions to full if switching to basic mode
-    if (currentMixingMode === 'basic') {
-        for (let i = 1; i <= 4; i++) {
-            regionState.regions[i] = {
-                type: 'inner',
-                x: 0,
-                y: 0,
-                width: 100,
-                height: 100,
-                isSet: false
-            };
-            updateRegionButton(i);
-        }
-    }
-    // Remove scheduleMix() - mixing only happens on button click
+    appState.toggleMixingMode();
 }
 
-function updateRegionRectanglesVisibility() {
-    // Show/hide region rectangles based on mode
-    for (let i = 1; i <= 4; i++) {
-        const overlay = document.getElementById(`overlay-compImg${i}`);
-        if (overlay) {
-            if (currentMixingMode === 'region') {
-                overlay.style.display = 'block';
-            } else {
-                overlay.style.display = 'none';
-            }
-        }
-    }
+function toggleRegionType(slot) {
+    appState.regionManager.toggleRegionType(slot);
+}
+
+function selectOutput(id) {
+    appState.selectOutput(id);
+}
+
+function requestMix() {
+    appState.requestMix();
 }
 
 // ==========================================================
-// UPLOAD HANDLING
+// HELPER FUNCTIONS (Remaining unchanged)
 // ==========================================================
+
 function upload(id) {
-    currentSlot = id;
+    appState.currentSlot = id;
     document.getElementById('fileInput').click();
 }
 
@@ -163,12 +769,12 @@ document.getElementById('fileInput').addEventListener('change', async function()
 
     const fd = new FormData();
     fd.append('image', this.files[0]);
-    fd.append('slot_id', currentSlot);
+    fd.append('slot_id', appState.currentSlot);
 
     try {
         await fetch('/upload', { method: 'POST', body: fd });
-        await updateImgSrc(currentSlot, 'original', 'img');
-        await updateCompView(currentSlot);
+        await updateImgSrc(appState.currentSlot, 'original', 'img');
+        await updateCompView(appState.currentSlot);
     } catch (e) { console.error(e); }
 
     this.value = '';
@@ -177,16 +783,14 @@ document.getElementById('fileInput').addEventListener('change', async function()
 async function updateCompView(slot) {
     const type = document.getElementById('sel' + slot).value;
     await updateImgSrc(slot, type, 'compImg');
-    // Update rectangle position after image loads
-    setTimeout(() => updateRectangle(slot), 100);
+    setTimeout(() => appState.regionManager.updateRegionUI(slot), 100);
 }
 
 async function updateOutputCompView(port) {
     const type = document.getElementById('outSel' + port).value;
-    await updateImgSrc(port, type, 'outCompImg', true); // true = is_output
+    await updateImgSrc(port, type, 'outCompImg', true);
 }
 
-// UNIFIED FUNCTION FOR BOTH INPUT AND OUTPUT IMAGES
 async function updateImgSrc(slot, type, prefix, isOutput = false) {
     try {
         const res = await fetch('/get_view', {
@@ -203,357 +807,32 @@ async function updateImgSrc(slot, type, prefix, isOutput = false) {
             const data = await res.json();
             const el = document.getElementById(prefix + slot);
             if (el) {
-                // Set src to empty string if no image (for outputs)
                 el.src = data.image ? "data:image/png;base64," + data.image : "";
-                
-                // Apply brightness/contrast if state exists
-                const bcKey = prefix + slot;
-                if (bcState[bcKey]) {
-                    const { b, c } = bcState[bcKey];
-                    el.style.filter = `brightness(${b}%) contrast(${c}%)`;
-                }
+                bcState.applyToElement(prefix + slot, el);
             }
         }
     } catch (e) { console.error(e); }
 }
 
-// ==========================================================
-// REGION DRAWING FUNCTIONS (Click and drag to draw)
-// ==========================================================
-function initializeRegionDrawing() {
-    // Add mouse event listeners to each FT viewport
-    for (let i = 1; i <= 4; i++) {
-        const viewport = document.getElementById(`viewport-compImg${i}`);
-        if (viewport) {
-            // Add click and drag listeners
-            viewport.addEventListener('mousedown', (e) => startRegionDrawing(e, i));
-            viewport.addEventListener('mousemove', (e) => updateRegionDrawing(e, i));
-            viewport.addEventListener('mouseup', (e) => finishRegionDrawing(e, i));
-            
-            // Also listen on the overlay
-            const overlay = document.getElementById(`overlay-compImg${i}`);
-            if (overlay) {
-                overlay.addEventListener('mousedown', (e) => startRegionDrawing(e, i));
-                overlay.addEventListener('mousemove', (e) => updateRegionDrawing(e, i));
-                overlay.addEventListener('mouseup', (e) => finishRegionDrawing(e, i));
-            }
-        }
-    }
-}
-
-function startRegionDrawing(e, slot) {
-    // Only allow drawing in region mode
-    if (currentMixingMode !== 'region') return;
-    
-    if (e.button !== 0) return; // Only left mouse button
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const viewport = document.getElementById(`viewport-compImg${slot}`);
-    const overlay = document.getElementById(`overlay-compImg${slot}`);
-    if (!viewport || !overlay) return;
-    
-    // Clear any existing rectangle
-    const existingRect = overlay.querySelector('.region-rectangle');
-    if (existingRect) {
-        existingRect.remove();
-    }
-    
-    // Get mouse position relative to viewport
-    const rect = viewport.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Start drawing
-    regionState.isDrawing = true;
-    regionState.drawingSlot = slot;
-    regionState.startX = x;
-    regionState.startY = y;
-    
-    // Create new rectangle element
-    const newRect = document.createElement('div');
-    newRect.className = `region-rectangle ${regionState.regions[slot].type}`;
-    newRect.style.left = `${x}px`;
-    newRect.style.top = `${y}px`;
-    newRect.style.width = '0px';
-    newRect.style.height = '0px';
-    
-    overlay.appendChild(newRect);
-    regionState.currentRect = newRect;
-    
-    // Add click handler to existing rectangle for dragging
-    newRect.addEventListener('mousedown', (e) => startRectangleDrag(e, slot));
-}
-
-function updateRegionDrawing(e, slot) {
-    // Only update if we're drawing on this slot
-    if (!regionState.isDrawing || regionState.drawingSlot !== slot) return;
-    if (!regionState.currentRect) return;
-    
-    const viewport = document.getElementById(`viewport-compImg${slot}`);
-    if (!viewport) return;
-    
-    // Get mouse position relative to viewport
-    const rect = viewport.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
-    
-    // Calculate rectangle dimensions
-    const width = currentX - regionState.startX;
-    const height = currentY - regionState.startY;
-    
-    // Update rectangle
-    regionState.currentRect.style.width = `${Math.abs(width)}px`;
-    regionState.currentRect.style.height = `${Math.abs(height)}px`;
-    
-    // Adjust position if drawing left or up
-    if (width < 0) {
-        regionState.currentRect.style.left = `${currentX}px`;
-    }
-    if (height < 0) {
-        regionState.currentRect.style.top = `${currentY}px`;
-    }
-}
-
-function finishRegionDrawing(e, slot) {
-    if (!regionState.isDrawing || regionState.drawingSlot !== slot) return;
-    if (!regionState.currentRect) return;
-    
-    const viewport = document.getElementById(`viewport-compImg${slot}`);
-    const overlay = document.getElementById(`overlay-compImg${slot}`);
-    if (!viewport || !overlay) return;
-    
-    // Get final rectangle position and size
-    const viewportRect = viewport.getBoundingClientRect();
-    const rect = regionState.currentRect.getBoundingClientRect();
-    
-    // Convert pixels to percentages
-    const xPercent = ((rect.left - viewportRect.left) / viewportRect.width) * 100;
-    const yPercent = ((rect.top - viewportRect.top) / viewportRect.height) * 100;
-    const widthPercent = (rect.width / viewportRect.width) * 100;
-    const heightPercent = (rect.height / viewportRect.height) * 100;
-    
-    // Store region data
-    regionState.regions[slot] = {
-        type: regionState.regions[slot].type, // Keep existing type
-        x: Math.max(0, Math.min(xPercent, 100)),
-        y: Math.max(0, Math.min(yPercent, 100)),
-        width: Math.max(1, Math.min(widthPercent, 100)),
-        height: Math.max(1, Math.min(heightPercent, 100)),
-        isSet: true
-    };
-    
-    // Reset drawing state
-    regionState.isDrawing = false;
-    regionState.drawingSlot = null;
-    regionState.currentRect = null;
-    
-    // Update the region button
-    updateRegionButton(slot);
-}
-
-// ==========================================================
-// RECTANGLE DRAGGING (After drawing)
-// ==========================================================
-function startRectangleDrag(e, slot) {
-    if (currentMixingMode !== 'region') return;
-    
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const rect = e.target;
-    const overlay = document.getElementById(`overlay-compImg${slot}`);
-    if (!rect || !overlay) return;
-    
-    // Store initial positions
-    regionState.dragStartX = e.clientX;
-    regionState.dragStartY = e.clientY;
-    regionState.dragStartLeft = parseFloat(rect.style.left) || 0;
-    regionState.dragStartTop = parseFloat(rect.style.top) || 0;
-    regionState.draggingRect = rect;
-    regionState.draggingSlot = slot;
-    
-    // Add drag listeners
-    document.addEventListener('mousemove', handleRectangleDrag);
-    document.addEventListener('mouseup', stopRectangleDrag);
-}
-
-function handleRectangleDrag(e) {
-    if (!regionState.draggingRect || !regionState.draggingSlot) return;
-    
-    const slot = regionState.draggingSlot;
-    const rect = regionState.draggingRect;
-    const overlay = document.getElementById(`overlay-compImg${slot}`);
-    if (!overlay) return;
-    
-    const overlayRect = overlay.getBoundingClientRect();
-    const deltaX = e.clientX - regionState.dragStartX;
-    const deltaY = e.clientY - regionState.dragStartY;
-    
-    // Calculate new position
-    const newLeft = regionState.dragStartLeft + deltaX;
-    const newTop = regionState.dragStartTop + deltaY;
-    
-    // Constrain within overlay bounds
-    const rectWidth = parseFloat(rect.style.width) || 0;
-    const rectHeight = parseFloat(rect.style.height) || 0;
-    const maxLeft = overlayRect.width - rectWidth;
-    const maxTop = overlayRect.height - rectHeight;
-    
-    rect.style.left = `${Math.max(0, Math.min(newLeft, maxLeft))}px`;
-    rect.style.top = `${Math.max(0, Math.min(newTop, maxTop))}px`;
-}
-
-function stopRectangleDrag() {
-    if (!regionState.draggingRect || !regionState.draggingSlot) return;
-    
-    const slot = regionState.draggingSlot;
-    const rect = regionState.draggingRect;
-    const overlay = document.getElementById(`overlay-compImg${slot}`);
-    
-    if (rect && overlay) {
-        // Convert new position to percentages
-        const overlayRect = overlay.getBoundingClientRect();
-        const xPercent = (parseFloat(rect.style.left) / overlayRect.width) * 100;
-        const yPercent = (parseFloat(rect.style.top) / overlayRect.height) * 100;
-        const widthPercent = (parseFloat(rect.style.width) / overlayRect.width) * 100;
-        const heightPercent = (parseFloat(rect.style.height) / overlayRect.height) * 100;
-        
-        // Update stored region
-        regionState.regions[slot].x = Math.max(0, Math.min(xPercent, 100));
-        regionState.regions[slot].y = Math.max(0, Math.min(yPercent, 100));
-        regionState.regions[slot].width = Math.max(1, Math.min(widthPercent, 100));
-        regionState.regions[slot].height = Math.max(1, Math.min(heightPercent, 100));
-        regionState.regions[slot].isSet = true;
-    }
-    
-    // Clean up
-    document.removeEventListener('mousemove', handleRectangleDrag);
-    document.removeEventListener('mouseup', stopRectangleDrag);
-    regionState.draggingRect = null;
-    regionState.draggingSlot = null;
-}
-
-// ==========================================================
-// REGION MANAGEMENT FUNCTIONS
-// ==========================================================
-function updateRectangle(slot) {
-    const region = regionState.regions[slot];
-    const overlay = document.getElementById(`overlay-compImg${slot}`);
-    
-    if (!overlay) return;
-    
-    // Clear any existing rectangle
-    const existingRect = overlay.querySelector('.region-rectangle');
-    if (existingRect) {
-        existingRect.remove();
-    }
-    
-    // Only create rectangle if region is set and we're in region mode
-    if (region.isSet && currentMixingMode === 'region') {
-        // Create rectangle element
-        const rect = document.createElement('div');
-        rect.className = `region-rectangle ${region.type}`;
-        
-        // Convert percentages to pixels
-        const overlayRect = overlay.getBoundingClientRect();
-        const left = (region.x / 100) * overlayRect.width;
-        const top = (region.y / 100) * overlayRect.height;
-        const width = (region.width / 100) * overlayRect.width;
-        const height = (region.height / 100) * overlayRect.height;
-        
-        rect.style.left = `${left}px`;
-        rect.style.top = `${top}px`;
-        rect.style.width = `${width}px`;
-        rect.style.height = `${height}px`;
-        
-        // Add drag listener
-        rect.addEventListener('mousedown', (e) => startRectangleDrag(e, slot));
-        
-        overlay.appendChild(rect);
-    }
-}
-
-function updateAllRectangles() {
-    for (let i = 1; i <= 4; i++) {
-        updateRectangle(i);
-    }
-}
-
-function toggleRegionType(slot) {
-    // Only allow toggling in region mode when region is set
-    if (currentMixingMode !== 'region' || !regionState.regions[slot].isSet) return;
-    
-    const region = regionState.regions[slot];
-    region.type = region.type === 'inner' ? 'outer' : 'inner';
-    
-    // Update button
-    updateRegionButton(slot);
-    
-    // Update rectangle color
-    updateRectangle(slot);
-}
-
-function updateRegionButton(slot) {
-    const btn = document.getElementById(`region-type${slot}`);
-    if (btn) {
-        const region = regionState.regions[slot];
-        
-        // Only show button in region mode
-        if (currentMixingMode === 'region') {
-            btn.style.display = 'block';
-            // Update button text to be more descriptive
-            btn.textContent = region.type === 'inner' ? 'Selecting INSIDE' : 'Selecting OUTSIDE';
-            btn.className = `region-btn ${region.type}`;
-            
-            // Enable/disable based on whether region is set
-            if (region.isSet) {
-                btn.disabled = false;
-                btn.style.opacity = '1';
-                btn.style.cursor = 'pointer';
-            } else {
-                btn.disabled = true;
-                btn.style.opacity = '0.5';
-                btn.style.cursor = 'not-allowed';
-            }
-        } else {
-            // Hide button in basic mode
-            btn.style.display = 'none';
-        }
-    }
-}
-
-// ==========================================================
-// SLIDER HANDLERS
-// ==========================================================
 function setupSliderHandlers() {
-    console.log("Setting up slider handlers...");
-    
-    // Get all weight sliders
     const weightSliders = [
         'wa1', 'wa2', 'wa3', 'wa4',
         'wb1', 'wb2', 'wb3', 'wb4'
     ];
     
-    // Setup handlers for each slider
     weightSliders.forEach(sliderId => {
         const slider = document.getElementById(sliderId);
         const valueDisplay = document.getElementById(sliderId + '-value');
         
         if (slider && valueDisplay) {
-            // Update display when slider changes
             slider.addEventListener('input', function() {
                 valueDisplay.textContent = this.value + '%';
-                // No automatic mixing - only on button click
             });
             
-            // Also update on page load to show current value
             valueDisplay.textContent = slider.value + '%';
         }
     });
     
-    // Setup reset buttons if they exist
     const resetButtons = document.querySelectorAll('.reset-btn');
     resetButtons.forEach(button => {
         button.addEventListener('click', function() {
@@ -575,228 +854,46 @@ function setupSliderHandlers() {
 // ==========================================================
 // INITIALIZATION
 // ==========================================================
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize region drawing
-    initializeRegionDrawing();
+    appState.regionManager.initializeEventListeners();
     
-    // Update rectangles on window resize
-    window.addEventListener('resize', updateAllRectangles);
+    // Set up event listeners
+    window.addEventListener('resize', () => appState.regionManager.updateAllRegionsUI());
     
-    // Set initial mode
+    // Initialize mode toggle
     const toggle = document.getElementById('modeToggle');
     if (toggle) {
         toggle.checked = false;
-        toggleMixingMode(); // Initialize with basic mode
+        appState.toggleMixingMode();
     }
     
-    // Instead, just clear them
+    // Clear output images on load
     clearOutputComponentImagesOnLoad();
     
-    // Initialize slider handlers
+    // Set up slider handlers
     setupSliderHandlers();
 });
 
-// NEW FUNCTION: Clear output component images on page load
 function clearOutputComponentImagesOnLoad() {
-    // Clear the output component images (but not the main output images)
     for (let i = 1; i <= 2; i++) {
         const compImg = document.getElementById('outCompImg' + i);
         if (compImg) {
-            compImg.src = ''; // Clear the src
-            compImg.style.filter = ''; // Clear any filters
+            compImg.src = '';
+            compImg.style.filter = '';
         }
         
-        // Also clear brightness/contrast state for output components
-        const bcKey = 'outCompImg' + i;
-        delete bcState[bcKey];
+        bcState.remove('outCompImg' + i);
     }
 }
 
 // ==========================================================
-// REALTIME MIX (ONLY ON BUTTON CLICK) - FIXED VERSION
+// RESET ON REFRESH
 // ==========================================================
-async function requestMix() {
-    // Prevent multiple simultaneous mixes
-    if (isMixing) {
-        console.log('Already mixing, please wait...');
-        return;
-    }
-    
-    console.log('Mix Images button clicked');
-    
-    isMixing = true;
-    // Increase job id ⇒ this automatically cancels old polling loops
-    currentJobId++;
-    const jobId = currentJobId;
 
-    // Stop previous polling
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-    }
-
-    // Reset progress bar
-    const pbar = document.getElementById('pbar');
-    if (pbar) pbar.style.width = "0%";
-
-    // Collect slider values
-    const getVal = (id) => {
-        const el = document.getElementById(id);
-        return el ? el.value : 0;
-    };
-
-    // Prepare payload with backward-compatible format
-    const payload = {
-        mode: getVal('mixMode'),  // Component mode: 'magnitude_phase' or 'real_imag'
-        target_output: targetOutput,
-        
-        // For backward compatibility with old backend
-        mask_size: 100,  // Always 100% for basic mode
-        mask_inner: true,  // Always inner for basic mode
-        
-        // New format for region mixing
-        mixing_mode: currentMixingMode, // 'basic' or 'region'
-        regions: {}
-    };
-
-    // Add individual region configurations for all slots
-    for (let i = 1; i <= 4; i++) {
-        const region = regionState.regions[i];
-        
-        if (currentMixingMode === 'basic') {
-            // Basic mode: use full region for backward compatibility
-            payload.regions[i] = {
-                type: 'inner',
-                x: 0,
-                y: 0,
-                width: 100,
-                height: 100
-            };
-        } else {
-            // Region mode: use user-defined regions
-            payload.regions[i] = {
-                type: region.type,
-                x: region.isSet ? parseFloat(region.x) : 0,
-                y: region.isSet ? parseFloat(region.y) : 0,
-                width: region.isSet ? parseFloat(region.width) : 100,
-                height: region.isSet ? parseFloat(region.height) : 100
-            };
-        }
-    }
-
-    // Add weight sliders (keep old format for backward compatibility)
-    payload.wa1 = getVal('wa1');
-    payload.wa2 = getVal('wa2');
-    payload.wa3 = getVal('wa3');
-    payload.wa4 = getVal('wa4');
-    payload.wb1 = getVal('wb1');
-    payload.wb2 = getVal('wb2');
-    payload.wb3 = getVal('wb3');
-    payload.wb4 = getVal('wb4');
-
-    console.log('Mixing payload:', payload);
-
-    try {
-        // Tell backend to start mixing
-        const response = await fetch('/mix', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Backend error:', response.status, errorText);
-            throw new Error(`Backend error: ${response.status} ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        console.log('Mix started:', result);
-
-    } catch (error) {
-        console.error('Error starting mix:', error);
-        isMixing = false;
-        alert(`Error starting mix: ${error.message}`);
-        return; // Stop if there was an error
-    }
-
-    // Start polling for progress + result
-    pollingInterval = setInterval(async () => {
-        // If a newer job started, stop polling
-        if (jobId !== currentJobId) {
-            clearInterval(pollingInterval);
-            isMixing = false;
-            return;
-        }
-
-        try {
-            const res = await fetch('/mix_status');
-            if (!res.ok) {
-                console.error('Error fetching mix status:', res.status);
-                clearInterval(pollingInterval);
-                isMixing = false;
-                return;
-            }
-            
-            const data = await res.json();
-            console.log('Mix status:', data);
-
-            // Update progress bar
-            if (pbar) pbar.style.width = data.progress + "%";
-
-            // ==========================================================
-            // FIXED: Stop polling when job is done, regardless of result
-            // ==========================================================
-            if (!data.running) {
-                clearInterval(pollingInterval);
-                pollingInterval = null;
-                isMixing = false;
-
-                // If we have a result, update the image
-                if (data.result) {
-                    // Update main output image
-                    const outEl = document.getElementById('outImg' + targetOutput);
-                    if (outEl) {
-                        outEl.src = "data:image/png;base64," + data.result;
-
-                        // Apply brightness/contrast if state exists
-                        const bcKey = 'outImg' + targetOutput;
-                        if (bcState[bcKey]) {
-                            const { b, c } = bcState[bcKey];
-                            outEl.style.filter = `brightness(${b}%) contrast(${c}%)`;
-                        }
-                    }
-
-                    // Update output component view
-                    await updateOutputCompView(targetOutput);
-                    console.log('Mix completed successfully');
-                } else {
-                    console.warn("Mix finished but no result returned");
-                }
-
-                // Reset bar after a small delay
-                setTimeout(() => { if (pbar) pbar.style.width = "0%"; }, 300);
-            }
-            // ==========================================================
-            // END OF FIX
-            // ==========================================================
-            
-        } catch (error) {
-            console.error('Error polling mix status:', error);
-            clearInterval(pollingInterval);
-            pollingInterval = null;
-            isMixing = false;
-        }
-
-    }, 150); // poll 6 times per second
-}
-
-// ==========================================================
-// RESET ON  REFRESH
-// ==========================================================
 window.addEventListener("load", () => {
     fetch("/reset", {
         method: "POST"
     }).catch(err => console.error("Reset failed:", err));
 });
-

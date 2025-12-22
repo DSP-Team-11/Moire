@@ -1,91 +1,125 @@
+# mixer.py
 import numpy as np
 import cv2
 import base64
+from typing import Dict, Optional, Tuple, Any
 
 class UnifiedMixer:
-    @staticmethod
-    def mix(images_dict, weights_a, weights_b, mode, region_config, target_output_port=1):
-        """
-        Unified mixing function that handles both basic and region mixing.
+    def __init__(self):
+        self._images_dict = {}
+        self._weights_a = {}
+        self._weights_b = {}
+        self._mode = 'magnitude_phase'
+        self._region_config = self.get_default_region_config('basic')
+        self._masks = {}
+        self._result_array = None
+        self._result_b64 = None
         
-        Args:
-            images_dict: Dictionary of image slots (1-4) to Image objects
-            weights_a: Sliders for Column 1 (Mag/Real)
-            weights_b: Sliders for Column 2 (Phase/Imag)
-            mode: 'magnitude_phase' or 'real_imag'
-            region_config: {
-                'size': percentage (0-100),  # For backward compatibility (only used in basic mode)
-                'inner': boolean,  # For backward compatibility (only used in basic mode)
-                'regions': {  # Required for region mixing mode
-                    '1': {'type': 'inner/outer', 'x': %, 'y': %, 'width': %, 'height': %},
-                    '2': {...},
-                    '3': {...},
-                    '4': {...}
-                }
-            }
-            target_output_port: Which output port to save to (1 or 2) - optional
-        
-        Returns: (result_numpy_array, result_base64_string)
+    # Getter and setter methods
+    def get_images_dict(self) -> Dict:
+        return self._images_dict
+    
+    def set_images_dict(self, images_dict: Dict) -> None:
+        self._images_dict = images_dict
+    
+    def get_weights_a(self) -> Dict:
+        return self._weights_a
+    
+    def set_weights_a(self, weights_a: Dict) -> None:
+        self._weights_a = weights_a
+    
+    def get_weights_b(self) -> Dict:
+        return self._weights_b
+    
+    def set_weights_b(self, weights_b: Dict) -> None:
+        self._weights_b = weights_b
+    
+    def get_mode(self) -> str:
+        return self._mode
+    
+    def set_mode(self, mode: str) -> None:
+        if mode not in ['magnitude_phase', 'real_imag']:
+            raise ValueError("Mode must be 'magnitude_phase' or 'real_imag'")
+        self._mode = mode
+    
+    def get_region_config(self) -> Dict:
+        return self._region_config
+    
+    def set_region_config(self, region_config: Dict) -> None:
+        self._region_config = region_config
+    
+    def get_result_array(self) -> Optional[np.ndarray]:
+        return self._result_array
+    
+    def get_result_b64(self) -> Optional[str]:
+        return self._result_b64
+    
+    def get_masks(self) -> Dict:
+        return self._masks
+    
+    def mix(self) -> Tuple[Optional[np.ndarray], Optional[str]]:
         """
-        # Filter out empty slots
+        Unified mixing function (Optimized).
+        """
+        # Use getters to access the data
+        images_dict = self.get_images_dict()
+        weights_a = self.get_weights_a()
+        weights_b = self.get_weights_b()
+        mode = self.get_mode()
+        region_config = self.get_region_config()
+        
+        # 1. Filter out empty slots
         valid_imgs = {k: v for k, v in images_dict.items() if v is not None}
         if not valid_imgs: 
+            self._result_array = None
+            self._result_b64 = None
             return None, None
         
-        # Get reference dimensions from first valid image
-        h, w = next(iter(valid_imgs.values())).shape
-
-        # Initialize accumulators
-        comp1_acc = np.zeros((h, w), dtype=np.complex128)
-        comp2_acc = np.zeros((h, w), dtype=np.complex128)
+        # 2. Get reference dimensions - FIXED: Use get_shape()
+        first_img = next(iter(valid_imgs.values()))
+        h, w = first_img.get_shape()  # Changed from .shape to .get_shape()
         
-        # FIXED: For magnitude_phase mode, we need special phase accumulation
+        # 3. Initialize Accumulators
         if mode == 'magnitude_phase':
-            mag_acc = np.zeros((h, w), dtype=np.float64)
-            phase_vec_acc = np.zeros((h, w), dtype=np.complex128)
-        
-        # Check if we have per-component regions (region mixing mode)
+            acc1 = np.zeros((h, w), dtype=np.float64)
+            acc2 = np.zeros((h, w), dtype=np.complex128)
+        else:
+            acc1 = np.zeros((h, w), dtype=np.complex128)
+            acc2 = np.zeros((h, w), dtype=np.complex128)
+
+        # 4. Generate Masks
         regions = region_config.get('regions', {})
-        has_per_component_regions = bool(regions)
+        hasRegion_comp = bool(regions)
         
-        # Generate mask(s)
-        if has_per_component_regions:
-            # Region mixing mode: generate individual masks for each component
-            masks = {}
+        masks = {}
+        if hasRegion_comp:
             for slot_str in ['1', '2', '3', '4']:
                 if slot_str in regions:
-                    region = regions[slot_str]
-                    masks[slot_str] = UnifiedMixer._generate_custom_mask(h, w, region)
+                    masks[slot_str] = self._generate_custom_mask(h, w, regions[slot_str])
                 else:
-                    # Default to full inner region if not specified
                     masks[slot_str] = np.ones((h, w), dtype=np.float32)
         else:
-            # Basic mixing mode: single unified mask
-            mask = UnifiedMixer._generate_unified_mask(h, w, region_config)
-            masks = {str(i): mask for i in range(1, 5)}  # Same mask for all
+            global_mask = self._generate_unified_mask(h, w, region_config)
+            masks = {str(i): global_mask for i in range(1, 5)}
+        
+        self._masks = masks
 
-        # Track weights for normalization
+        # 5. Process Images
         sum_wa = 0
         sum_wb = 0
         
-        # Process each image
         for slot, img in images_dict.items():
-            if img is None: 
-                continue
+            if img is None: continue
             
-            # Normalize sliders (0-10 -> 0.0-1.0)
             wa = weights_a.get(str(slot), 0) / 10.0
             wb = weights_b.get(str(slot), 0) / 10.0
 
-            # Track weight sums for normalization
             sum_wa += wa
             sum_wb += wb
 
-            # Skip if both weights are zero
-            if wa == 0 and wb == 0:
-                continue
+            if wa == 0 and wb == 0: continue
 
-            # Get frequency domain components based on mode
+            # Get Components
             if mode == 'magnitude_phase':
                 c1 = img.get_magnitude()
                 c2 = img.get_phase()
@@ -93,107 +127,71 @@ class UnifiedMixer:
                 c1 = img.get_real()
                 c2 = img.get_imaginary()
 
-            # Get mask for this slot
+            # Determine Masking Logic
             slot_str = str(slot)
-            mask = masks.get(slot_str, np.ones((h, w), dtype=np.float32))
+            current_mask = masks.get(slot_str, np.ones((h, w), dtype=np.float32))
             
-            # Apply Region Filtering
-            if has_per_component_regions:
-                # Region mode: check if we should use inner or outer region
-                region_type = regions.get(slot_str, {}).get('type', 'inner')
-                if region_type == 'inner':
-                    c1 = c1 * mask
-                    c2 = c2 * mask
-                else:  # outer
-                    c1 = c1 * (1 - mask)
-                    c2 = c2 * (1 - mask)
+            is_outer = False
+            if hasRegion_comp:
+                if regions.get(slot_str, {}).get('type') == 'outer':
+                    is_outer = True
             else:
-                # Basic mode: use the 'inner' flag from region_config
-                if region_config.get('inner', True):
-                    c1 = c1 * mask
-                    c2 = c2 * mask
-                else:
-                    c1 = c1 * (1 - mask)
-                    c2 = c2 * (1 - mask)
+                if not region_config.get('inner', True):
+                    is_outer = True
+            
+            final_mask = (1 - current_mask) if is_outer else current_mask
+            
+            c1 = c1 * final_mask
+            c2 = c2 * final_mask
 
-            # FIXED: Proper accumulation based on mode
+            # Accumulate
             if mode == 'magnitude_phase':
-                # Magnitude: linear accumulation
-                mag_acc += c1 * wa
-                # Phase: complex vector accumulation (CRITICAL FIX)
-                phase_vec_acc += wb * np.exp(1j * c2)
+                acc1 += c1 * wa
+                acc2 += wb * np.exp(1j * c2)
             else:
-                # Real/Imag: linear accumulation
-                comp1_acc += c1 * wa
-                comp2_acc += c2 * wb
+                acc1 += c1 * wa
+                acc2 += c2 * wb
 
-        # FIX 3: Weight normalization
+        # 6. Normalize & Reconstruct
         if mode == 'magnitude_phase':
-            # Normalize magnitude accumulator
-            mag_acc /= max(sum_wa, 1e-6)
-            # FIX 4: Phase-only input edge case
-            if np.allclose(phase_vec_acc, 0):
-                # If all wb == 0, use weighted average of input phases as reference
-                reference_phase = np.zeros((h, w), dtype=np.float64)
-                total_wb = 0
-                for slot, img in images_dict.items():
-                    if img is None:
-                        continue
-                    wb = weights_b.get(str(slot), 0) / 10.0
-                    if wb > 0:
-                        phase = img.get_phase()
-                        reference_phase += wb * phase
-                        total_wb += wb
-                if total_wb > 0:
-                    reference_phase /= total_wb
-                else:
-                    # If truly no phase input, use zero phase
-                    reference_phase = np.zeros((h, w), dtype=np.float64)
-                final_phase = reference_phase
-            else:
-                # Normalize phase vector accumulator
-                phase_vec_acc /= max(sum_wb, 1e-6)
-                # Extract final phase from accumulated complex vectors
-                final_phase = np.angle(phase_vec_acc)
+            acc1 /= max(sum_wa, 1e-6)
             
-            result_complex = mag_acc * np.exp(1j * final_phase)
+            if np.allclose(acc2, 0):
+                final_phase = np.zeros((h, w), dtype=np.float64)
+            else:
+                acc2 /= max(sum_wb, 1e-6)
+                final_phase = np.angle(acc2)
+            
+            result_complex = acc1 * np.exp(1j * final_phase)
+            
         else:
-            # Normalize real/imag accumulators
-            comp1_acc /= max(sum_wa, 1e-6)
-            comp2_acc /= max(sum_wb, 1e-6)
-            result_complex = comp1_acc + 1j * comp2_acc
+            acc1 /= max(sum_wa, 1e-6)
+            acc2 /= max(sum_wb, 1e-6)
+            result_complex = acc1 + 1j * acc2
 
-        # IFFT
+        # 7. Inverse FFT
         f_ishift = np.fft.ifftshift(result_complex)
         img_back = np.fft.ifft2(f_ishift)
-        # FIXED: Use real part instead of absolute value
         img_back = np.real(img_back)
 
-        # Store the numpy array
+        # 8. Post-Processing for Display
         result_array = img_back.copy()
-
-        # Normalize for display (0-255)
+        
+        # Normalize to 0-255
         img_normalized = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX)
         img_normalized = np.uint8(img_normalized)
         
-        # Encode to base64 for immediate display
+        # Encode to Base64
         _, buffer = cv2.imencode('.png', img_normalized)
         result_b64 = base64.b64encode(buffer).decode('utf-8')
 
+        # Store results
+        self._result_array = result_array
+        self._result_b64 = result_b64
+
         return result_array, result_b64
 
-    @staticmethod
-    def _generate_unified_mask(h, w, config):
-        """
-        Generate a single centered rectangular mask (for basic mixing mode).
-        
-        Args:
-            h, w: Height and width of the image
-            config: {'size': percentage, 'inner': boolean}
-        
-        Returns:
-            Binary mask (1 inside region, 0 outside)
-        """
+    def _generate_unified_mask(self, h: int, w: int, config: Dict) -> np.ndarray:
         mask = np.zeros((h, w), dtype=np.float32)
         cy, cx = h // 2, w // 2
         percent = config.get('size', 100)
@@ -208,18 +206,7 @@ class UnifiedMixer:
         mask[y1:y2, x1:x2] = 1
         return mask
 
-    @staticmethod
-    def _generate_custom_mask(h, w, region):
-        """
-        Generate a custom rectangular mask at specified position (for region mixing mode).
-        
-        Args:
-            h, w: Height and width of the image
-            region: {'x': %, 'y': %, 'width': %, 'height': %}
-        
-        Returns:
-            Binary mask (1 inside region, 0 outside)
-        """
+    def _generate_custom_mask(self, h: int, w: int, region: Dict) -> np.ndarray:
         mask = np.zeros((h, w), dtype=np.float32)
         
         # Convert percentages to pixels
@@ -243,16 +230,7 @@ class UnifiedMixer:
         return mask
 
     @staticmethod
-    def get_default_region_config(mode='basic'):
-        """
-        Get default region configurations for UI initialization.
-        
-        Args:
-            mode: 'basic' or 'region'
-        
-        Returns:
-            Default region configuration dictionary
-        """
+    def get_default_region_config(mode: str = 'basic') -> Dict:
         if mode == 'basic':
             return {
                 'size': 100,
@@ -264,14 +242,20 @@ class UnifiedMixer:
                     '4': {'type': 'inner', 'x': 0, 'y': 0, 'width': 100, 'height': 100}
                 }
             }
-        else:  # region mode
-            return {
-                'size': 100,  # Not used in region mode, kept for compatibility
-                'inner': True,  # Not used in region mode, kept for compatibility
-                'regions': {
-                    '1': {'type': 'inner', 'x': 25, 'y': 25, 'width': 50, 'height': 50},
-                    '2': {'type': 'inner', 'x': 25, 'y': 25, 'width': 50, 'height': 50},
-                    '3': {'type': 'inner', 'x': 25, 'y': 25, 'width': 50, 'height': 50},
-                    '4': {'type': 'inner', 'x': 25, 'y': 25, 'width': 50, 'height': 50}
-                }
-            }
+        else:
+            return {}
+    
+    @classmethod
+    def static_mix(cls, images_dict: Dict, weights_a: Dict, weights_b: Dict, 
+                   mode: str, region_config: Dict) -> Tuple[Optional[np.ndarray], Optional[str]]:
+        """
+        Static method for backward compatibility.
+        """
+        mixer = cls()
+        mixer.set_images_dict(images_dict)
+        mixer.set_weights_a(weights_a)
+        mixer.set_weights_b(weights_b)
+        mixer.set_mode(mode)
+        mixer.set_region_config(region_config)
+        
+        return mixer.mix()
