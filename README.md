@@ -272,8 +272,4 @@ Enable advanced spatial control:
   <sub>If this project helped you, please consider giving it a ⭐</sub>
 </p>
 
-<p>
-  <a href="#-fourier-transform-mixer--beamforming-simulator">Back to Top ⬆️</a>
-</p>
-
 </div>
